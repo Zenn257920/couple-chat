@@ -32,7 +32,8 @@ jobs:
         run: npm ci
 
       - name: Ensure Android project
-        run: |           mkdir -p out
+        run: |         
+          mkdir -p out
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ] || [ ! -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png ]; then
             rm -rf android
             npx cap add android
