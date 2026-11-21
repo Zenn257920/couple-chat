@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ကိုကို &amp; ကလေးလေး</string>
+    <string name="title_activity_main">ကိုကို &amp; ကလေးလေး</string>
+    <string name="package_name">com.kaung.lovechat</string>
+    <string name="custom_url_scheme">com.kaung.lovechat</string>
+</resources>
