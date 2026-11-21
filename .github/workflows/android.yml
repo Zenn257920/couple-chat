@@ -41,7 +41,7 @@ jobs:
           npx cap sync android
 
       - name: Build debug APK
-        run: ./gradlew -p android assembleDebug
+        run: ./android/gradlew -p android assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
