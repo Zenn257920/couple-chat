@@ -1,1 +1,28 @@
-aW1wb3J0IHR5cGUgeyBDYXBhY2l0b3JDb25maWcgfSBmcm9tICJAY2FwYWNpdG9yL2NsaSI7CgovLyBDYXBhY2l0b3Igd3JhcHBlciBmb3IgdGhlIEFuZHJvaWQgQVBLIChzaWRlbG9hZCDigJQgbm8gUGxheSBTdG9yZSkuCi8vCi8vIElNUE9SVEFOVDogdGhpcyBhcHAgaXMgTk9UIGEgZnVsbHkgb2ZmbGluZSBidW5kbGUuIFRoZSBjaGF0IGJhY2tlbmQKLy8gKE5leHQuanMgQVBJIHJvdXRlcyArIE5lb24gUG9zdGdyZVNRTCkgbGl2ZXMgb24gVmVyY2VsLCBzbyB0aGUgQVBLIGlzCi8vIGEgV2ViVmlldyB3cmFwcGVyIHRoYXQgbG9hZHMgdGhlIGxpdmUgc2l0ZSBhdCBzZXJ2ZXIudXJsIGJlbG93LgovLyBUaGF0IGlzIHdoeSB0aGUgQVBLIG5lZWRzIGludGVybmV0IHRvIHNob3cgbGl2ZSBtZXNzYWdlcy4KLy8gTGl2ZSBWZXJjZWwgVVJMICh2ZXJpZmllZCAyMDI2LTExLTIxKTogaHR0cHM6Ly9jb3VwbGUtY2hhdC11bWJlci52ZXJjZWwuYXBwCi8vIE5PVEU6IGh0dHBzOi8vY291cGxlLWNoYXQudmVyY2VsLmFwcCBpcyB0YWtlbiBieSBhbm90aGVyIFZlcmNlbCB0ZWFtCi8vICg0MDQgREVQTE9ZTUVOVF9OT1RfRk9VTkQgZm9yIHVzKSDigJQgZG8gTk9UIHBvaW50IHNlcnZlci51cmwgdGhlcmUuCi8vIElmIHRoZSBkZXBsb3llZCBVUkwgZXZlciBjaGFuZ2VzLCB1cGRhdGUgc2VydmVyLnVybCBoZXJlLCByZS1ydW4KLy8gYG5weCBjYXAgc3luYyBhbmRyb2lkYCBhbmQgcmVidWlsZCB0aGUgQVBLIHZpYSBHaXRIdWIgQWN0aW9ucwovLyAoLmdpdGh1Yi93b3JrZmxvd3MvYW5kcm9pZC55bWwpLgpjb25zdCBjb25maWc6IENhcGFjaXRvckNvbmZpZyA9IHsKICBhcHBJZDogImNvbS5rYXVuZy5sb3ZlY2hhdCIsCiAgYXBwTmFtZTogIuGAgOGAreGAr+GAgOGAreGAryAmIOGAgOGAnOGAseGAuOGAnOGAseGAuCIsCiAgd2ViRGlyOiAib3V0IiwKICBzZXJ2ZXI6IHsKICAgIHVybDogImh0dHBzOi8vY291cGxlLWNoYXQtdW1iZXIudmVyY2VsLmFwcCIsCiAgICBjbGVhcnRleHQ6IGZhbHNlLAogIH0sCiAgYW5kcm9pZDogewogICAgYWxsb3dNaXhlZENvbnRlbnQ6IGZhbHNlLAogIH0sCn07CgpleHBvcnQgZGVmYXVsdCBjb25maWc7Cg==
+import type { CapacitorConfig } from "@capacitor/cli";
+
+// Capacitor wrapper for the Android APK (sideload — no Play Store).
+//
+// IMPORTANT: this app is NOT a fully offline bundle. The chat backend
+// (Next.js API routes + Neon PostgreSQL) lives on Vercel, so the APK is
+// a WebView wrapper that loads the live site at server.url below.
+// That is why the APK needs internet to show live messages.
+// Live Vercel URL (verified 2026-11-21): https://couple-chat-umber.vercel.app
+// NOTE: https://couple-chat.vercel.app is taken by another Vercel team
+// (404 DEPLOYMENT_NOT_FOUND for us) — do NOT point server.url there.
+// If the deployed URL ever changes, update server.url here, re-run
+// `npx cap sync android` and rebuild the APK via GitHub Actions
+// (.github/workflows/android.yml).
+const config: CapacitorConfig = {
+  appId: "com.kaung.lovechat",
+  appName: "ကိုကို & ကလေးလေး",
+  webDir: "out",
+  server: {
+    url: "https://couple-chat-umber.vercel.app",
+    cleartext: false,
+  },
+  android: {
+    allowMixedContent: false,
+  },
+};
+
+export default config;
