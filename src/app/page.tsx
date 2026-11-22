@@ -1874,6 +1874,22 @@ export default function Home() {
                   ? `Chatting with ${displayName(other, names)}`
                   : "Offline — reconnecting…")}
           </p>
+          {/* Live Together counter, inside the header (not a bar under
+              it — under the nav bar is only the chat background).
+              Tap it to change the date in Settings. */}
+          {togetherSince && (
+            <button
+              type="button"
+              onClick={() => {
+                setDraftNames({ ...names });
+                setShowSettings(true);
+              }}
+              className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-ocean"
+            >
+              <Heart className="h-3 w-3 fill-current" /> Together{" "}
+              {formatTogether(togetherSince, nowTick)}
+            </button>
+          )}
         </div>
         <button
           onClick={() => {
@@ -1887,23 +1903,8 @@ export default function Home() {
         </button>
       </header>
 
-      {/* Live Together counter (pinned-style bar under the header).
-          Tap it to change the date in Settings. */}
-      {togetherSince && (
-        <button
-          type="button"
-          onClick={() => {
-            setDraftNames({ ...names });
-            setShowSettings(true);
-          }}
-          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
-        >
-          <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
-          {formatTogether(togetherSince, nowTick)}
-        </button>
-      )}
-
-      {/* Messages */}
+      {/* Messages (right under the header — only the chat
+          background shows between the nav bar and the messages). */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={listRef}
