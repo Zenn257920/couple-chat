@@ -221,7 +221,7 @@ export default function Home() {
     return (
       <div className="flex flex-col gap-1.5">
         {messages.map((m, i) => {
-          const own = m.sender === me;
+          const own = m.sender === identity;
           const prev = messages[i - 1];
           const showDay =
             !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
@@ -288,7 +288,7 @@ export default function Home() {
         <div ref={bottomRef} />
       </div>
     );
-  }, [messages, me, names, typingFrom]);
+  }, [messages, identity, names, typingFrom]);
 
   // Register this phone for full push notifications (APK only). FCM
   // gives the phone a device token; the server stores it so a message
