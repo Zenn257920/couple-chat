@@ -144,6 +144,12 @@ export default function Home() {
   const [voiceError, setVoiceError] = useState("");
   const [playingId, setPlayingId] = useState<number | null>(null);
   const [loadingAudioId, setLoadingAudioId] = useState<number | null>(null);
+  // Scroll-to-bottom button (Telegram-style): shown when the user has
+  // scrolled up; the badge counts new messages that arrived meanwhile.
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [newWhileAway, setNewWhileAway] = useState(0);
+  // Tiny transient toast (e.g. "Copied ✓").
+  const [toast, setToast] = useState("");
   const [draftNames, setDraftNames] = useState<Names>({
     ...DEFAULT_DISPLAY_NAMES,
   });
@@ -166,6 +172,8 @@ export default function Home() {
   const recStartedAtRef = useRef(0);
   const discardVoiceRef = useRef(false);
   const recordingRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const toastTimerRef = useRef<number | null>(null);
   const audioCacheRef = useRef(new Map<number, string>());
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -193,6 +201,18 @@ export default function Home() {
     });
   }, []);
 
+  function showToast(text: string) {
+    setToast(text);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 1500);
+  }
+
+  // Keep a ref mirror of the messages for the poll, whose callback
+  // must not close over stale state.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const fetchState = useCallback(async () => {
     try {
       const res = await fetch("/api/messages", { cache: "no-store" });
@@ -204,6 +224,22 @@ export default function Home() {
       setConnected(true);
       setLoadError("");
       const me = identityRef.current;
+      // Are we near the bottom, and did any new messages from the
+      // other person arrive while we were scrolled up?
+      const el = listRef.current;
+      const nearBottom = el
+        ? el.scrollHeight - el.scrollTop - el.clientHeight < 160
+        : true;
+      const prevMaxId = messagesRef.current.reduce(
+        (max, m) => Math.max(max, m.id),
+        0,
+      );
+      const freshIncoming = data.messages.filter(
+        (m) => m.id > prevMaxId && me && m.sender !== me,
+      ).length;
+      if (!nearBottom && freshIncoming > 0) {
+        setNewWhileAway((n) => n + freshIncoming);
+      }
       setMessages((prev) => {
         const changed =
           prev.length !== data.messages.length ||
@@ -215,11 +251,8 @@ export default function Home() {
                 JSON.stringify(data.messages[i]?.reactions),
           );
         if (!changed) return prev;
-        // Auto-scroll if we were already near the bottom.
-        const el = listRef.current;
-        const nearBottom = el
-          ? el.scrollHeight - el.scrollTop - el.clientHeight < 160
-          : true;
+        // Auto-scroll only if we were already near the bottom —
+        // never yank the user away from the history they are reading.
         if (nearBottom) requestAnimationFrame(() => scrollToBottom());
         return data.messages;
       });
@@ -263,6 +296,15 @@ export default function Home() {
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
   }, [identity, fetchState]);
+
+  // Grow the composer with the text (Telegram-style), up to ~5 lines.
+  // Runs after every keystroke and after send clears the input.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [input]);
 
   // Keep the latest message visible above the on-screen keyboard.
   // When the keyboard opens, the visual viewport shrinks; size the
@@ -321,6 +363,8 @@ export default function Home() {
                 onTouchStart={onMessageTouchStart}
                 onTouchEnd={(e) => onMessageTouchEnd(e, m)}
                 onContextMenu={(e) => e.preventDefault()}
+                // Double-tap a bubble for a quick ❤️ (Telegram-style).
+                onDoubleClick={() => void reactTo(m.id, "❤️")}
               >
                 <div
                   className={`relative max-w-[78%] rounded-2xl px-3.5 py-2 shadow-sm select-none ${
@@ -688,6 +732,16 @@ export default function Home() {
     setInput("");
     cursorRef.current = null;
     setShowEmoji(false);
+    // Keep the keyboard open like Telegram: tapping the send button
+    // steals focus from the composer (and the keyboard with it), so
+    // put focus straight back — once now, inside the tap gesture, and
+    // once more when the send finishes, in case it dismissed meanwhile.
+    inputRef.current?.focus();
+    try {
+      navigator.vibrate?.(10);
+    } catch {
+      // Vibration unsupported — ignore.
+    }
     const replyingTo = replyTo;
     setReplyTo(null);
     const optimistic: ChatMessage = {
@@ -731,6 +785,7 @@ export default function Home() {
       setLoadError("Message didn't send — check your connection and try again.");
     } finally {
       setSending(false);
+      inputRef.current?.focus();
     }
   }
 
@@ -961,6 +1016,11 @@ export default function Home() {
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
     try {
+      navigator.vibrate?.(10);
+    } catch {
+      // Vibration unsupported — ignore.
+    }
+    try {
       // The native recorder already returns base64 — no conversion needed.
       const base64 = preview.base64;
       const res = await fetch("/api/messages", {
@@ -1169,14 +1229,23 @@ export default function Home() {
       </header>
 
       {/* Messages */}
-      <div
-        ref={listRef}
-        className="chat-bg flex-1 overflow-y-auto px-4 py-4"
-        onClick={() => {
-          if (showSettings) setShowSettings(false);
-          if (showEmoji) setShowEmoji(false);
-        }}
-      >
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={listRef}
+          className="chat-bg flex-1 overflow-y-auto px-4 py-4"
+          onClick={() => {
+            if (showSettings) setShowSettings(false);
+            if (showEmoji) setShowEmoji(false);
+          }}
+          onScroll={() => {
+            const el = listRef.current;
+            if (!el) return;
+            const nearBottom =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+            setShowScrollDown(!nearBottom);
+            if (nearBottom) setNewWhileAway(0);
+          }}
+        >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <div className="text-5xl">💙</div>
@@ -1190,6 +1259,28 @@ export default function Home() {
           renderedMessages
         )}
         {messages.length === 0 && <div ref={bottomRef} />}
+        </div>
+        {/* Scroll-to-bottom button (Telegram-style) with a badge for
+            new messages that arrived while scrolled up. */}
+        {showScrollDown && (
+          <button
+            type="button"
+            onClick={() => {
+              setNewWhileAway(0);
+              setShowScrollDown(false);
+              scrollToBottom();
+            }}
+            className="absolute right-4 bottom-4 flex h-11 w-11 items-center justify-center rounded-full bg-card text-xl text-ocean shadow-lg transition active:scale-95"
+            aria-label="Scroll to bottom"
+          >
+            ↓
+            {newWhileAway > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+                {newWhileAway > 99 ? "99+" : newWhileAway}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {loadError && (
@@ -1203,6 +1294,15 @@ export default function Home() {
         <p className="bg-ice px-4 pb-1 text-right text-[11px] text-ink-soft">
           {displayName(other, names)} read this ✓✓
         </p>
+      )}
+
+      {/* Transient toast (e.g. "Copied ✓") */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center">
+          <span className="rounded-full bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+            {toast}
+          </span>
+        </div>
       )}
 
       {/* Composer */}
@@ -1339,6 +1439,9 @@ export default function Home() {
               onSelect={rememberCursor}
               onClick={rememberCursor}
               onFocus={() => {
+                // Tapping the text field closes the emoji panel
+                // (Telegram behavior) and opens the keyboard.
+                setShowEmoji(false);
                 // Keyboard is opening — scroll the latest message up
                 // above it (the visualViewport listener also fires and
                 // re-scrolls once the keyboard finishes opening).
@@ -1421,6 +1524,23 @@ export default function Home() {
             >
               ↩ Reply to this message
             </button>
+            {reactMenuFor.kind === "text" && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(reactMenuFor.body);
+                    showToast("Copied ✓");
+                  } catch {
+                    showToast("Couldn't copy");
+                  }
+                  setReactMenuFor(null);
+                }}
+                className="mt-2 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+              >
+                📋 Copy text
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setReactMenuFor(null)}
