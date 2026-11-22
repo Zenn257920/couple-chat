@@ -1784,8 +1784,11 @@ export default function Home() {
 
   return (
     <div
-      className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
-      style={viewportHeight ? { height: viewportHeight } : undefined}
+      className="chat-bg mx-auto flex h-dvh w-full max-w-2xl flex-col sm:border-x sm:border-line"
+      style={{
+        ...(viewportHeight ? { height: viewportHeight } : {}),
+        ...(wallpaper === "default" ? {} : WALLPAPERS[wallpaper]?.style),
+      }}
     >
       {/* Header — Telegram-style floating rounded bar */}
       <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
