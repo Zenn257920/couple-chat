@@ -3,6 +3,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoiceRecorder } from "capacitor-voice-recorder";
 import {
+  Camera,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  Copy,
+  Heart,
+  LoaderCircle,
+  Lock,
+  Mic,
+  PartyPopper,
+  Pause,
+  PawPrint,
+  Pencil,
+  Plane,
+  Play,
+  Reply,
+  Send,
+  Settings,
+  Shapes,
+  Smartphone,
+  Smile,
+  Square,
+  UtensilsCrossed,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import {
   DEFAULT_DISPLAY_NAMES,
   displayName,
   otherSender,
@@ -19,45 +46,45 @@ const POLL_MS = 1500;
 
 // Built-in emoji picker — no extra dependency, just a grid of common
 // emojis grouped by category. Tapping one inserts it at the cursor.
-const EMOJI_GROUPS: { label: string; icon: string; emojis: string[] }[] = [
+const EMOJI_GROUPS: { label: string; icon: LucideIcon; emojis: string[] }[] = [
   {
     label: "Smileys",
-    icon: "😀",
+    icon: Smile,
     emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "🥹", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "👻", "👽", "👾", "🤖", "🎃", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"],
   },
   {
     label: "Love",
-    icon: "❤️",
+    icon: Heart,
     emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "👍", "👎", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✌️", "🤞", "🫰", "🤟", "🤘", "👌", "🤌", "🤏", "💪", "🫶", "👋", "🤙", "👊", "✊", "🤛", "🤜", "✍️", "💅", "🤳", "🫵", "👈", "👉", "👆", "👇", "☝️", "🫱", "🫲"],
   },
   {
     label: "Animals",
-    icon: "🐶",
+    icon: PawPrint,
     emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻‍❄️", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷️", "🐢", "🐍", "🦎", "🐙", "🦑", "🦐", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐩", "🐈", "🐓", "🦃", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐇", "🦝", "🦨", "🦡", "🦦", "🐁", "🐀", "🐿️", "🦔"],
   },
   {
     label: "Food",
-    icon: "🍕",
+    icon: UtensilsCrossed,
     emojis: ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🧈", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🫓", "🥪", "🥙", "🧆", "🌮", "🌯", "🫔", "🥗", "🍲", "🍜", "🍝", "🍛", "🍣", "🍱", "🥟", "🦪", "🍤", "🍙", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🥛", "🍼", "☕", "🫖", "🍵", "🧃", "🥤", "🧋", "🍶", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹", "🧉", "🍾"],
   },
   {
     label: "Fun",
-    icon: "🎉",
+    icon: PartyPopper,
     emojis: ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🛹", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛼", "🛷", "⛸️", "🥌", "🎿", "⛷️", "🏂", "🪂", "🏋️", "🤼", "🤸", "⛹️", "🤺", "🏌️", "🏇", "🧘", "🏊", "🚣", "🧗", "🚵", "🤾", "🎵", "🎶", "🎤", "🎧", "🎼", "🎹", "🥁", "🎷", "🎺", "🎸", "🪕", "🎻", "🎬", "🎭", "🎨", "🖼️", "🎰", "🎲", "🎯", "🎳", "🎮", "🕹️"],
   },
   {
     label: "Travel",
-    icon: "✈️",
+    icon: Plane,
     emojis: ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🚲", "🛴", "🛵", "🏍️", "🚔", "🚍", "🚘", "🚖", "✈️", "🛫", "🛬", "🛩️", "💺", "🚀", "🛸", "🚁", "🛶", "⛵", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓", "🪝", "⛽", "🚧", "🚦", "🚥", "🗼", "🗽", "⛲", "🎡", "🎢", "🎠", "🏰", "🏯", "🗿", "🏟️", "🏛️"],
   },
   {
     label: "Things",
-    icon: "📱",
+    icon: Smartphone,
     emojis: ["⌚", "📱", "📲", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🖲️", "🕹️", "🗜️", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙️", "🎚️", "🎛️", "🧭", "⏱️", "⏲️", "⏰", "🕰️", "⌛", "⏳", "📡", "🔋", "🔌", "💡", "🔦", "🕯️", "🪔", "🧯", "🛢️", "💸", "💵", "💴", "💶", "💷", "💰", "💳", "💎", "⚖️", "🧰", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🔩", "⚙️", "🧲", "🪛", "🔫", "💣", "🧨", "🪓", "🔪", "🗡️", "⚔️", "🛡️", "💊", "💉", "🧬", "🦠", "🧫", "🧪", "🌡️", "🧹", "🧺", "🧻", "🚽", "🚰", "🚿", "🛁", "🛀", "🧼", "🪒", "🧽", "🪣", "🧴", "🛎️", "🔑", "🗝️", "🚪", "🪑", "🛋️", "🛏️", "🧸", "🪆", "🖼️", "🪞", "🪟", "🛍️", "🛒", "🎁", "🎈", "🎏", "🎀", "🪄", "🪅", "🎊", "🎉", "🎎", "🏮", "🎐", "🧧", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷️"],
   },
   {
     label: "Symbols",
-    icon: "🔣",
+    icon: Shapes,
     emojis: ["💯", "💮", "🛑", "⛔", "📛", "🚫", "💢", "💥", "💫", "💦", "💨", "🕳️", "💬", "👁️‍🗨️", "🗨️", "🗯️", "💭", "💤", "👁️", "👅", "👄", "💋", "🩸", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👂", "🦻", "👃", "📪", "📫", "📬", "📭", "📮", "📯", "📜", "📃", "📄", "📑", "🧾", "📊", "📈", "📉", "📋", "📁", "📂", "🗂️", "🗞️", "📰", "📓", "📔", "📒", "📕", "📗", "📘", "📚", "📖", "🔖", "🧷", "🔗", "📎", "🖇️", "📐", "📏", "🧮", "📌", "📍", "✂️", "🖊️", "🖋️", "✒️", "🖌️", "🖍️", "📝", "✏️", "🔍", "🔎", "🔏", "🔐", "🔒", "🔓"],
   },
 ];
@@ -177,6 +204,15 @@ function formatLastSeen(iso: string | null): string {
   })} ${time}`;
 }
 
+// Read ticks (✓ / ✓✓) as Lucide icons instead of text.
+function Ticks({ read }: { read: boolean }) {
+  return read ? (
+    <CheckCheck className="inline h-3.5 w-3.5" />
+  ) : (
+    <Check className="inline h-3.5 w-3.5" />
+  );
+}
+
 // Live Together counter: days + ticking HH:MM:SS since the date.
 function formatTogether(since: string, nowMs: number): string {
   const start = new Date(`${since}T00:00:00`).getTime();
@@ -294,7 +330,7 @@ export default function Home() {
   // scrolled up; the badge counts new messages that arrived meanwhile.
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [newWhileAway, setNewWhileAway] = useState(0);
-  // Tiny transient toast (e.g. "Copied ✓").
+  // Tiny transient toast (e.g. "Copied").
   const [toast, setToast] = useState("");
   const [draftNames, setDraftNames] = useState<Names>({
     ...DEFAULT_DISPLAY_NAMES,
@@ -494,7 +530,7 @@ export default function Home() {
             : null,
         });
       } catch {
-        // Photos stay as 💙 fallbacks.
+        // Photos stay as Heart-icon fallbacks.
       }
     })();
   }, [identity]);
@@ -659,11 +695,13 @@ export default function Home() {
                               : "Play voice message"
                           }
                         >
-                          {loadingAudioId === m.id
-                            ? "…"
-                            : playingId === m.id
-                              ? "⏸"
-                              : "▶"}
+                          {loadingAudioId === m.id ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : playingId === m.id ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
                         </button>
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
                           <div
@@ -707,7 +745,7 @@ export default function Home() {
                         {formatTime(m.created_at)}
                         {own && (
                           <span className="ml-1">
-                            {m.read_at ? "✓✓" : "✓"}
+                            <Ticks read={!!m.read_at} />
                           </span>
                         )}
                       </p>
@@ -735,7 +773,7 @@ export default function Home() {
                             own ? "bg-white/20 text-white" : "bg-ice text-ocean"
                           }`}
                         >
-                          <span className="text-3xl">📷</span>
+                          <Camera className="h-9 w-9" />
                           {loadingPhotoId === m.id
                             ? "Loading…"
                             : "Tap to view photo"}
@@ -749,7 +787,7 @@ export default function Home() {
                         {formatTime(m.created_at)}
                         {own && (
                           <span className="ml-1">
-                            {m.read_at ? "✓✓" : "✓"}
+                            <Ticks read={!!m.read_at} />
                           </span>
                         )}
                       </p>
@@ -768,7 +806,7 @@ export default function Home() {
                         {m.edited_at ? " · edited" : ""}
                         {own && (
                           <span className="ml-1">
-                            {m.read_at ? "✓✓" : "✓"}
+                            <Ticks read={!!m.read_at} />
                           </span>
                         )}
                       </span>
@@ -953,7 +991,7 @@ export default function Home() {
         ...prev,
         [identity]: `data:image/jpeg;base64,${compressed.base64}`,
       }));
-      showToast("Profile photo updated ✓");
+      showToast("Profile photo updated");
     } catch {
       showToast("Couldn't upload photo");
     } finally {
@@ -1091,7 +1129,7 @@ export default function Home() {
         body: JSON.stringify({ date: date || null }),
       });
       if (!res.ok) throw new Error("save failed");
-      showToast(date ? "Together date saved ✓" : "Together date cleared");
+      showToast(date ? "Together date saved" : "Together date cleared");
     } catch {
       showToast("Couldn't save date");
     }
@@ -1697,7 +1735,9 @@ export default function Home() {
   if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-ice">
-        <p className="text-ink-soft">Loading… 💙</p>
+        <p className="flex items-center gap-1.5 text-ink-soft">
+          Loading… <Heart className="h-4 w-4 fill-current text-ocean" />
+        </p>
       </div>
     );
   }
@@ -1707,12 +1747,13 @@ export default function Home() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-ice px-6 text-center">
         <div className="fade-up flex w-full max-w-sm flex-col items-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-ocean text-4xl shadow-lg">
-            💙
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-ocean shadow-lg">
+            <Heart className="h-9 w-9 fill-white text-white" />
           </div>
           <h1 className="mt-6 text-2xl font-bold text-ink">We Talk</h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-            Our private little chat 💙
+            Our private little chat{" "}
+            <Heart className="inline h-3.5 w-3.5 fill-current text-ocean" />
             <br />
             Who&apos;s using this phone?
           </p>
@@ -1756,7 +1797,7 @@ export default function Home() {
               className="h-full w-full rounded-full object-cover"
             />
           ) : (
-            "💙"
+            <Heart className="h-5 w-5 fill-white text-white" />
           )}
           <span
             className={`absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
@@ -1791,10 +1832,10 @@ export default function Home() {
             setDraftNames({ ...names });
             setShowSettings(true);
           }}
-          className="rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ocean transition active:scale-95"
+          className="flex items-center rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ocean transition active:scale-95"
           aria-label="Settings"
         >
-          ⚙️ {displayName(me, names)}
+          <Settings className="mr-1.5 h-4 w-4" /> {displayName(me, names)}
         </button>
       </header>
 
@@ -1809,7 +1850,8 @@ export default function Home() {
           }}
           className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
         >
-          💙 Together {formatTogether(togetherSince, nowTick)}
+          <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
+          {formatTogether(togetherSince, nowTick)}
         </button>
       )}
 
@@ -1834,8 +1876,8 @@ export default function Home() {
         >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="text-5xl">💙</div>
-            <p className="mt-4 text-lg font-bold text-ink">Hello 👋</p>
+            <Heart className="h-12 w-12 fill-ocean text-ocean" />
+            <p className="mt-4 text-lg font-bold text-ink">Hello</p>
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-soft">
               A private little place for {displayName("kaung", names)} and{" "}
               {displayName("love", names)} — send the first message
@@ -1859,7 +1901,7 @@ export default function Home() {
             className="absolute right-4 bottom-4 flex h-11 w-11 items-center justify-center rounded-full bg-card text-xl text-ocean shadow-lg transition active:scale-95"
             aria-label="Scroll to bottom"
           >
-            ↓
+            <ChevronDown className="h-6 w-6" />
             {newWhileAway > 0 && (
               <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
                 {newWhileAway > 99 ? "99+" : newWhileAway}
@@ -1878,11 +1920,12 @@ export default function Home() {
       {/* Read receipt hint for own last message */}
       {lastOwnRead?.read_at && (
         <p className="bg-ice px-4 pb-1 text-right text-[11px] text-ink-soft">
-          {displayName(other, names)} read this ✓✓
+          {displayName(other, names)} read this{" "}
+          <CheckCheck className="inline h-3.5 w-3.5" />
         </p>
       )}
 
-      {/* Transient toast (e.g. "Copied ✓") */}
+      {/* Transient toast (e.g. "Copied") */}
       {toast && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center">
           <span className="rounded-full bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg">
@@ -1908,7 +1951,7 @@ export default function Home() {
             className="absolute top-4 right-4 rounded-full bg-white/20 px-3 py-2 text-sm font-bold text-white"
             aria-label="Close photo"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -1929,7 +1972,7 @@ export default function Home() {
               className="shrink-0 rounded-full px-2 py-1 text-ink-soft"
               aria-label="Cancel edit"
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -1947,7 +1990,7 @@ export default function Home() {
               className="shrink-0 rounded-full px-2 py-1 text-ink-soft"
               aria-label="Cancel reply"
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -1978,12 +2021,12 @@ export default function Home() {
                   key={g.label}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setEmojiTab(i)}
-                  className={`flex-1 rounded-xl py-1.5 text-lg ${
+                  className={`flex flex-1 items-center justify-center rounded-xl py-1.5 ${
                     emojiTab === i ? "bg-ice-deep" : ""
                   }`}
                   aria-label={g.label}
                 >
-                  {g.icon}
+                  <g.icon className="h-5 w-5" />
                 </button>
               ))}
             </div>
@@ -2015,7 +2058,7 @@ export default function Home() {
               onClick={cancelRecording}
               className="rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ink-soft transition active:scale-95"
             >
-              ✕ Cancel
+              <X className="mr-1 inline h-4 w-4" /> Cancel
             </button>
             <button
               type="button"
@@ -2023,7 +2066,7 @@ export default function Home() {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500 text-lg text-white shadow-md transition active:scale-95"
               aria-label="Stop recording"
             >
-              ■
+              <Square className="h-5 w-5 fill-current" />
             </button>
           </div>
         ) : voicePreview ? (
@@ -2034,7 +2077,7 @@ export default function Home() {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95"
               aria-label={previewPlaying ? "Pause preview" : "Play preview"}
             >
-              {previewPlaying ? "⏸" : "▶"}
+              {previewPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </button>
             <span className="flex-1 text-sm font-semibold text-ink">
               Voice message • {formatVoiceTime(voicePreview.seconds)}
@@ -2047,7 +2090,7 @@ export default function Home() {
               }}
               className="rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ink-soft transition active:scale-95"
             >
-              ✕ Cancel
+              <X className="mr-1 inline h-4 w-4" /> Cancel
             </button>
             <button
               type="button"
@@ -2056,7 +2099,7 @@ export default function Home() {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
               aria-label="Send voice message"
             >
-              ➤
+              <Send className="h-5 w-5" />
             </button>
           </div>
         ) : (
@@ -2068,7 +2111,7 @@ export default function Home() {
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ice-deep text-xl text-ocean transition active:scale-95 disabled:opacity-40"
               aria-label="Send a photo"
             >
-              📷
+              <Camera className="h-5 w-5" />
             </button>
             <input
               ref={chatPhotoInputRef}
@@ -2087,7 +2130,7 @@ export default function Home() {
               }`}
               aria-label="Emoji"
             >
-              😊
+              <Smile className="h-5 w-5" />
             </button>
             <textarea
               ref={inputRef}
@@ -2127,7 +2170,7 @@ export default function Home() {
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
                 aria-label={editing ? "Save edit" : "Send"}
               >
-                {editing ? "✓" : "➤"}
+                {editing ? <Check className="h-5 w-5" /> : <Send className="h-5 w-5" />}
               </button>
             ) : (
               <button
@@ -2135,7 +2178,7 @@ export default function Home() {
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95"
                 aria-label="Record voice message"
               >
-                🎤
+                <Mic className="h-5 w-5" />
               </button>
             )}
           </div>
@@ -2181,9 +2224,9 @@ export default function Home() {
                 setReactMenuFor(null);
                 inputRef.current?.focus();
               }}
-              className="mt-3 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+              className="mt-3 flex w-full items-center justify-center rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
             >
-              ↩ Reply to this message
+              <Reply className="mr-1.5 h-4 w-4" /> Reply to this message
             </button>
             {reactMenuFor.kind === "text" && (
               <button
@@ -2191,15 +2234,15 @@ export default function Home() {
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(reactMenuFor.body);
-                    showToast("Copied ✓");
+                    showToast("Copied");
                   } catch {
                     showToast("Couldn't copy");
                   }
                   setReactMenuFor(null);
                 }}
-                className="mt-2 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+                className="mt-2 flex w-full items-center justify-center rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
               >
-                📋 Copy text
+                <Copy className="mr-1.5 h-4 w-4" /> Copy text
               </button>
             )}
             {reactMenuFor.sender === identity &&
@@ -2210,9 +2253,9 @@ export default function Home() {
                     startEdit(reactMenuFor);
                     setReactMenuFor(null);
                   }}
-                  className="mt-2 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+                  className="mt-2 flex w-full items-center justify-center rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
                 >
-                  ✏️ Edit message
+                  <Pencil className="mr-1.5 h-4 w-4" /> Edit message
                 </button>
               )}
             <button
@@ -2235,9 +2278,10 @@ export default function Home() {
               This phone is
             </p>
             <div className="mt-2 flex items-center justify-between rounded-xl bg-ice px-3 py-3">
-              <span className="text-sm font-bold text-ink">
+              <span className="flex items-center gap-1 text-sm font-bold text-ink">
                 {displayName(me, names)} (
-                {me === "kaung" ? "Person 1" : "Person 2"}) 🔒
+                {me === "kaung" ? "Person 1" : "Person 2"}){" "}
+                <Lock className="h-3.5 w-3.5" />
               </span>
               <span className="text-xs text-ink-soft">
                 Locked to this phone
@@ -2287,7 +2331,7 @@ export default function Home() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  "💙"
+                  <Heart className="h-6 w-6 fill-white text-white" />
                 )}
               </div>
               <div className="flex flex-1 flex-col gap-2">
