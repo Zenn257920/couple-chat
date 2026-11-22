@@ -10,6 +10,29 @@
   --color-ocean-deep: #0f3559;
   --color-ocean-light: #6ea8d8;
   --color-card: #ffffff;
+  /* Soft text on your own bubbles (light blue on blue, light pink on
+     pink in dark mode). */
+  --color-own-soft: #bfdbfe;
+}
+
+/* Telegram-style dark theme (the screenshot: dark + pink accent).
+   Toggling `theme-dark` on <html> swaps every theme colour at once,
+   because all utilities read these variables. */
+html.theme-dark {
+  --color-ice: #0e1621;
+  --color-ice-deep: #242f3d;
+  --color-ink: #ffffff;
+  --color-ink-soft: #7f91a4;
+  --color-line: #242f3d;
+  --color-ocean: #e91e63;
+  --color-ocean-deep: #c2185b;
+  --color-ocean-light: #f48fb1;
+  --color-card: #17212b;
+  --color-own-soft: #fbcfe8;
+}
+
+html.theme-dark body {
+  background-color: #0e1621;
 }
 
 html,
@@ -67,6 +90,12 @@ body {
 .chat-bg {
   background-color: var(--color-ice);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ccircle cx='3' cy='3' r='1.2' fill='%23174a7c' fill-opacity='0.06'/%3E%3Ccircle cx='17' cy='17' r='1.2' fill='%23174a7c' fill-opacity='0.06'/%3E%3C/svg%3E");
+}
+
+/* Dark mode: same dots, lighter, on the dark background. */
+html.theme-dark .chat-bg {
+  background-color: #0e1621;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ccircle cx='3' cy='3' r='1.2' fill='%23ffffff' fill-opacity='0.05'/%3E%3Ccircle cx='17' cy='17' r='1.2' fill='%23ffffff' fill-opacity='0.05'/%3E%3C/svg%3E");
 }
 
 /* Recording dot pulse */
