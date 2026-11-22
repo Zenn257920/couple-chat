@@ -22,6 +22,8 @@ export type ChatMessage = {
   audio_duration: number | null;
   audio_mime: string | null;
   has_audio: boolean;
+  // Set when the sender edits their own text message.
+  edited_at: string | null;
 };
 
 export type TypingState = {
@@ -43,10 +45,11 @@ export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   // arrived via push, whose text comes straight from the POST).
   const rows = await sql`
     SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
-      audio_duration, audio_mime, has_audio
+      audio_duration, audio_mime, has_audio, edited_at
     FROM (
       SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
-        audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio
+        audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
+        edited_at
       FROM chat_messages
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit}
@@ -105,7 +108,8 @@ export async function insertMessage(
     INSERT INTO chat_messages (sender, body, kind, reply_to_id, audio_base64, audio_duration, audio_mime)
     VALUES (${sender}, ${body}, ${kind}, ${replyTo}, ${voice?.audioBase64 ?? null}, ${voice?.audioDuration ?? null}, ${voice?.audioMime ?? null})
     RETURNING id, sender, body, kind, created_at, read_at, reply_to_id,
-      audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio
+      audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
+      edited_at
   `;
   const message = rows[0] as unknown as ChatMessage;
   message.reactions = [];
@@ -115,6 +119,88 @@ export async function insertMessage(
     if (target.length) message.reply_to = target[0] as unknown as ChatMessage["reply_to"];
   }
   return message;
+}
+
+// Edit your own TEXT message (no delete — the user didn't want it).
+// Returns the updated message, or null when the message doesn't
+// exist, isn't yours, or isn't text.
+export async function updateMessage(
+  messageId: number,
+  sender: Sender,
+  body: string,
+): Promise<ChatMessage | null> {
+  const sql = getSql();
+  const rows = await sql`
+    UPDATE chat_messages
+    SET body = ${body}, edited_at = now()
+    WHERE id = ${messageId} AND sender = ${sender} AND kind = 'text'
+    RETURNING id, sender, body, kind, created_at, read_at, reply_to_id,
+      audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
+      edited_at
+  `;
+  if (!rows.length) return null;
+  const message = rows[0] as unknown as ChatMessage;
+  message.reactions = [];
+  message.reply_to = null;
+  if (message.reply_to_id) {
+    const target = await sql`SELECT id, sender, body FROM chat_messages WHERE id = ${message.reply_to_id}`;
+    if (target.length) message.reply_to = target[0] as unknown as ChatMessage["reply_to"];
+  }
+  const reactionRows = await sql`
+    SELECT sender, emoji FROM chat_reactions WHERE message_id = ${messageId}
+  `;
+  for (const r of reactionRows as unknown as { sender: Sender; emoji: string }[]) {
+    const group = message.reactions.find((g) => g.emoji === r.emoji);
+    if (group) group.senders.push(r.sender);
+    else message.reactions.push({ emoji: r.emoji, senders: [r.sender] });
+  }
+  return message;
+}
+
+// --- Online / last-seen presence ---
+
+export async function setPresence(sender: Sender): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO chat_presence (sender, last_seen)
+    VALUES (${sender}, now())
+    ON CONFLICT (sender) DO UPDATE SET last_seen = now()
+  `;
+}
+
+export async function getPresence(): Promise<Record<Sender, string | null>> {
+  const sql = getSql();
+  const rows = await sql`SELECT sender, last_seen FROM chat_presence`;
+  const out: Record<Sender, string | null> = { kaung: null, love: null };
+  for (const r of rows as unknown as { sender: Sender; last_seen: string }[]) {
+    out[r.sender] = r.last_seen;
+  }
+  return out;
+}
+
+// --- Profile photos (one per person, base64 JPEG) ---
+
+export async function getProfilePhotos(): Promise<Record<Sender, string | null>> {
+  const sql = getSql();
+  const rows = await sql`SELECT sender, photo_base64 FROM chat_profiles`;
+  const out: Record<Sender, string | null> = { kaung: null, love: null };
+  for (const r of rows as unknown as { sender: Sender; photo_base64: string | null }[]) {
+    out[r.sender] = r.photo_base64;
+  }
+  return out;
+}
+
+export async function setProfilePhoto(
+  sender: Sender,
+  photoBase64: string | null,
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO chat_profiles (sender, photo_base64, updated_at)
+    VALUES (${sender}, ${photoBase64}, now())
+    ON CONFLICT (sender) DO UPDATE
+      SET photo_base64 = EXCLUDED.photo_base64, updated_at = now()
+  `;
 }
 
 // Fetch one voice message's audio (lazy — never part of the list).

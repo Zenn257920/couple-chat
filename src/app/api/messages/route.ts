@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { getMessages, getTyping, insertMessage } from "@/lib/db";
+import {
+  getMessages,
+  getPresence,
+  getTyping,
+  insertMessage,
+  updateMessage,
+} from "@/lib/db";
 import { displayName, otherSender, type Sender } from "@/lib/names";
 import { sendPushTo } from "@/lib/push";
 
@@ -8,12 +14,60 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    const [messages, typing] = await Promise.all([getMessages(), getTyping()]);
-    return NextResponse.json({ messages, typing });
+    const [messages, typing, presence] = await Promise.all([
+      getMessages(),
+      getTyping(),
+      getPresence(),
+    ]);
+    return NextResponse.json({ messages, typing, presence });
   } catch (e) {
     console.error("GET /api/messages failed", e);
     return NextResponse.json(
       { error: "Could not load messages" },
+      { status: 500 },
+    );
+  }
+}
+
+// Edit your own text message (no delete). No push for edits.
+export async function PATCH(req: Request) {
+  try {
+    const data = (await req.json()) as {
+      id?: unknown;
+      sender?: unknown;
+      body?: unknown;
+    };
+    if (data.sender !== "kaung" && data.sender !== "love") {
+      return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
+    }
+    if (typeof data.id !== "number" || !Number.isInteger(data.id) || data.id <= 0) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+    if (typeof data.body !== "string") {
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+    }
+    const body = data.body.trim();
+    if (!body) {
+      return NextResponse.json({ error: "Message is empty" }, { status: 400 });
+    }
+    if (body.length > 2000) {
+      return NextResponse.json(
+        { error: "Message is too long (max 2000 characters)" },
+        { status: 400 },
+      );
+    }
+    const message = await updateMessage(data.id, data.sender, body);
+    if (!message) {
+      return NextResponse.json(
+        { error: "Message not found or not yours" },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ message });
+  } catch (e) {
+    console.error("PATCH /api/messages failed", e);
+    return NextResponse.json(
+      { error: "Could not edit message" },
       { status: 500 },
     );
   }

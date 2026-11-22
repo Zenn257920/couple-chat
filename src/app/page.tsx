@@ -23,32 +23,42 @@ const EMOJI_GROUPS: { label: string; icon: string; emojis: string[] }[] = [
   {
     label: "Smileys",
     icon: "😀",
-    emojis: ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😜", "🤪", "😎", "🥹", "😭", "😡", "🥰", "😴", "🤔", "🙃", "😇"],
+    emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "😎", "🤓", "🧐", "😕", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "🥹", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "👻", "👽", "👾", "🤖", "🎃", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"],
   },
   {
-    label: "Hearts",
+    label: "Love",
     icon: "❤️",
-    emojis: ["❤️", "💙", "💜", "🩷", "🧡", "💛", "💚", "🤍", "💔", "💕", "💖", "💘", "👍", "👎", "👏", "🙏", "🤝", "✌️", "🤞", "🫶", "👋", "🫰"],
+    emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "👍", "👎", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✌️", "🤞", "🫰", "🤟", "🤘", "👌", "🤌", "🤏", "💪", "🫶", "👋", "🤙", "👊", "✊", "🤛", "🤜", "✍️", "💅", "🤳", "🫵", "👈", "👉", "👆", "👇", "☝️", "🫱", "🫲"],
   },
   {
     label: "Animals",
     icon: "🐶",
-    emojis: ["🐶", "🐱", "🐰", "🦊", "🐼", "🐨", "🦁", "🐸", "🐵", "🦄", "🐷", "🐥", "🦋", "🐢"],
+    emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻‍❄️", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷️", "🐢", "🐍", "🦎", "🐙", "🦑", "🦐", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐩", "🐈", "🐓", "🦃", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐇", "🦝", "🦨", "🦡", "🦦", "🐁", "🐀", "🐿️", "🦔"],
   },
   {
     label: "Food",
     icon: "🍕",
-    emojis: ["🍕", "🍔", "🍟", "🍩", "🍰", "☕", "🧋", "🍜", "🍣", "🍓", "🍉", "🍿", "🍦", "🍪"],
+    emojis: ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🧈", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🫓", "🥪", "🥙", "🧆", "🌮", "🌯", "🫔", "🥗", "🍲", "🍜", "🍝", "🍛", "🍣", "🍱", "🥟", "🦪", "🍤", "🍙", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🥛", "🍼", "☕", "🫖", "🍵", "🧃", "🥤", "🧋", "🍶", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹", "🧉", "🍾"],
   },
   {
     label: "Fun",
     icon: "🎉",
-    emojis: ["⚽", "🏀", "🎮", "🎵", "🎬", "📚", "✈️", "🚗", "🎉", "🎁", "💐", "🌹", "🎄", "🎃"],
+    emojis: ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🛹", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛼", "🛷", "⛸️", "🥌", "🎿", "⛷️", "🏂", "🪂", "🏋️", "🤼", "🤸", "⛹️", "🤺", "🏌️", "🏇", "🧘", "🏊", "🚣", "🧗", "🚵", "🤾", "🎵", "🎶", "🎤", "🎧", "🎼", "🎹", "🥁", "🎷", "🎺", "🎸", "🪕", "🎻", "🎬", "🎭", "🎨", "🖼️", "🎰", "🎲", "🎯", "🎳", "🎮", "🕹️"],
+  },
+  {
+    label: "Travel",
+    icon: "✈️",
+    emojis: ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🚲", "🛴", "🛵", "🏍️", "🚔", "🚍", "🚘", "🚖", "✈️", "🛫", "🛬", "🛩️", "💺", "🚀", "🛸", "🚁", "🛶", "⛵", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓", "🪝", "⛽", "🚧", "🚦", "🚥", "🗼", "🗽", "⛲", "🎡", "🎢", "🎠", "🏰", "🏯", "🗿", "🏟️", "🏛️"],
   },
   {
     label: "Things",
     icon: "📱",
-    emojis: ["📱", "💻", "⌚", "👓", "🕶️", "👗", "👟", "🎒", "💄", "💍", "🔑", "🎈", "🌙", "⭐"],
+    emojis: ["⌚", "📱", "📲", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🖲️", "🕹️", "🗜️", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙️", "🎚️", "🎛️", "🧭", "⏱️", "⏲️", "⏰", "🕰️", "⌛", "⏳", "📡", "🔋", "🔌", "💡", "🔦", "🕯️", "🪔", "🧯", "🛢️", "💸", "💵", "💴", "💶", "💷", "💰", "💳", "💎", "⚖️", "🧰", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🔩", "⚙️", "🧲", "🪛", "🔫", "💣", "🧨", "🪓", "🔪", "🗡️", "⚔️", "🛡️", "💊", "💉", "🧬", "🦠", "🧫", "🧪", "🌡️", "🧹", "🧺", "🧻", "🚽", "🚰", "🚿", "🛁", "🛀", "🧼", "🪒", "🧽", "🪣", "🧴", "🛎️", "🔑", "🗝️", "🚪", "🪑", "🛋️", "🛏️", "🧸", "🪆", "🖼️", "🪞", "🪟", "🛍️", "🛒", "🎁", "🎈", "🎏", "🎀", "🪄", "🪅", "🎊", "🎉", "🎎", "🏮", "🎐", "🧧", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷️"],
+  },
+  {
+    label: "Symbols",
+    icon: "🔣",
+    emojis: ["💯", "💮", "🛑", "⛔", "📛", "🚫", "💢", "💥", "💫", "💦", "💨", "🕳️", "💬", "👁️‍🗨️", "🗨️", "🗯️", "💭", "💤", "👁️", "👅", "👄", "💋", "🩸", "🧠", "🫀", "🫁", "🦷", "🦴", "👀", "👂", "🦻", "👃", "📪", "📫", "📬", "📭", "📮", "📯", "📜", "📃", "📄", "📑", "🧾", "📊", "📈", "📉", "📋", "📁", "📂", "🗂️", "🗞️", "📰", "📓", "📔", "📒", "📕", "📗", "📘", "📚", "📖", "🔖", "🧷", "🔗", "📎", "🖇️", "📐", "📏", "🧮", "📌", "📍", "✂️", "🖊️", "🖋️", "✒️", "🖌️", "🖍️", "📝", "✏️", "🔍", "🔎", "🔏", "🔐", "🔒", "🔓"],
   },
 ];
 
@@ -76,6 +86,95 @@ function formatTime(iso: string): string {
     minute: "2-digit",
     timeZone: "Asia/Yangon",
   });
+}
+
+// --- Chat wallpaper (per phone, localStorage) ---
+
+const WALLPAPER_KEY = "lovechat.wallpaper";
+const WALLPAPERS: Record<string, { label: string; style: React.CSSProperties }> = {
+  default: { label: "Default dots", style: {} },
+  ocean: {
+    label: "Ocean mist",
+    style: { background: "linear-gradient(180deg, #D8ECF6 0%, #EAF2F8 100%)" },
+  },
+  sunset: {
+    label: "Sunset glow",
+    style: { background: "linear-gradient(180deg, #FBE0C8 0%, #FDF3E7 100%)" },
+  },
+  mint: {
+    label: "Mint leaf",
+    style: { background: "linear-gradient(180deg, #D7EEE0 0%, #EAF6EE 100%)" },
+  },
+  lavender: {
+    label: "Lavender",
+    style: { background: "linear-gradient(180deg, #E5DEF7 0%, #F3F0FB 100%)" },
+  },
+  rose: {
+    label: "Rose petal",
+    style: { background: "linear-gradient(180deg, #F9DCE2 0%, #FDF0F2 100%)" },
+  },
+};
+
+function loadWallpaper(): string {
+  try {
+    const raw = localStorage.getItem(WALLPAPER_KEY);
+    if (raw && WALLPAPERS[raw]) return raw;
+  } catch {
+    // fall through to default
+  }
+  return "default";
+}
+
+// --- Recently used emojis for the picker (localStorage, max 12) ---
+
+const RECENT_EMOJIS_KEY = "lovechat.recent_emojis";
+
+function loadRecentEmojis(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_EMOJIS_KEY);
+    if (raw) {
+      return (JSON.parse(raw) as unknown[])
+        .filter((e): e is string => typeof e === "string")
+        .slice(0, 12);
+    }
+  } catch {
+    // fall through to empty
+  }
+  return [];
+}
+
+// --- Online / last-seen presence ---
+
+// The other phone counts as Online when its heartbeat is < 20s old
+// (the app posts one every 10s while open).
+function isOnline(iso: string | null): boolean {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() < 20_000;
+}
+
+function formatLastSeen(iso: string | null): string {
+  if (!iso) return "";
+  if (isOnline(iso)) return "Online";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const time = d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Yangon",
+  });
+  if (sameDay(d, now)) return `Last seen ${time}`;
+  if (sameDay(d, yesterday)) return `Last seen yesterday ${time}`;
+  return `Last seen ${d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Yangon",
+  })} ${time}`;
 }
 
 // Voice message durations as m:ss.
@@ -133,6 +232,26 @@ export default function Home() {
   const [reactMenuFor, setReactMenuFor] = useState<ChatMessage | null>(null);
   // Confirming an identity reset in Settings.
   const [confirmResetIdentity, setConfirmResetIdentity] = useState(false);
+  // Message being edited (own text message only) — the composer turns
+  // into an edit box with an "Editing message" bar above it.
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  // Presence: each phone heartbeats every 10s; the header shows the
+  // other phone as Online / Last seen.
+  const [presence, setPresence] = useState<Record<Sender, string | null>>({
+    kaung: null,
+    love: null,
+  });
+  // Chat wallpaper (per phone, localStorage).
+  const [wallpaper, setWallpaper] = useState("default");
+  // Recently used emojis for the picker.
+  const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
+  // Profile photos (both phones, data URLs) — fetched once on load.
+  const [photos, setPhotos] = useState<Record<Sender, string | null>>({
+    kaung: null,
+    love: null,
+  });
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   // Voice messages: tap the mic to record, tap stop, then send.
   const [isRecording, setIsRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
@@ -191,6 +310,8 @@ export default function Home() {
   // Load identity + names from this phone on first open.
   useEffect(() => {
     setNames(loadNames());
+    setWallpaper(loadWallpaper());
+    setRecentEmojis(loadRecentEmojis());
     const saved = localStorage.getItem(IDENTITY_KEY);
     if (saved === "kaung" || saved === "love") setIdentity(saved);
     setReady(true);
@@ -222,9 +343,11 @@ export default function Home() {
       const data = (await res.json()) as {
         messages: ChatMessage[];
         typing: { sender: Sender } | null;
+        presence?: Record<Sender, string | null>;
       };
       setConnected(true);
       setLoadError("");
+      if (data.presence) setPresence(data.presence);
       const me = identityRef.current;
       // Are we near the bottom, and did any new messages from the
       // other person arrive while we were scrolled up?
@@ -248,6 +371,8 @@ export default function Home() {
           prev.some(
             (m, i) =>
               m.id !== data.messages[i]?.id ||
+              m.body !== data.messages[i]?.body ||
+              m.edited_at !== data.messages[i]?.edited_at ||
               m.reply_to_id !== data.messages[i]?.reply_to_id ||
               JSON.stringify(m.reactions) !==
                 JSON.stringify(data.messages[i]?.reactions),
@@ -298,6 +423,56 @@ export default function Home() {
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
   }, [identity, fetchState]);
+
+  // Presence heartbeat: tell the other phone we're here, every 10s
+  // while the app is open (also when it comes back to the front).
+  useEffect(() => {
+    if (!identity) return;
+    const beat = () => {
+      void fetch("/api/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: identity }),
+      }).catch(() => {});
+    };
+    beat();
+    const t = window.setInterval(beat, 10_000);
+    const onVisible = () => {
+      if (!document.hidden) beat();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [identity]);
+
+  // Profile photos: fetch both once when the app opens (never in the
+  // 1.5s poll — there is no need to re-fetch them).
+  useEffect(() => {
+    if (!identity) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/profile-photo", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          photos: Record<Sender, string | null>;
+        };
+        setPhotos({
+          kaung: data.photos.kaung
+            ? `data:image/jpeg;base64,${data.photos.kaung}`
+            : null,
+          love: data.photos.love
+            ? `data:image/jpeg;base64,${data.photos.love}`
+            : null,
+        });
+      } catch {
+        // Photos stay as 💙 fallbacks.
+      }
+    })();
+  }, [identity]);
 
   // Grow the composer with the text (Telegram-style), up to ~5 lines.
   // Runs after every keystroke and after send clears the input.
@@ -500,6 +675,7 @@ export default function Home() {
                         }`}
                       >
                         {formatTime(m.created_at)}
+                        {m.edited_at ? " · edited" : ""}
                         {own && (
                           <span className="ml-1">
                             {m.read_at ? "✓✓" : "✓"}
@@ -633,6 +809,80 @@ export default function Home() {
     setConfirmResetIdentity(false);
   }
 
+  // --- Profile photo (one per person, stored server-side) ---
+
+  // Compress a picked photo to max 256px JPEG (~20–50 KB) so it fits
+  // in the database.
+  async function compressPhoto(file: File): Promise<string | null> {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error("bad image"));
+        im.src = url;
+      });
+      const scale = Math.min(1, 256 / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      return dataUrl.split(",")[1] ?? null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !identity) return;
+    setPhotoUploading(true);
+    try {
+      const base64 = await compressPhoto(file);
+      if (!base64) throw new Error("compress failed");
+      const res = await fetch("/api/profile-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: identity, photoBase64: base64 }),
+      });
+      if (!res.ok) throw new Error("upload failed");
+      setPhotos((prev) => ({
+        ...prev,
+        [identity]: `data:image/jpeg;base64,${base64}`,
+      }));
+      showToast("Profile photo updated ✓");
+    } catch {
+      showToast("Couldn't upload photo");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  async function removePhoto() {
+    if (!identity) return;
+    setPhotoUploading(true);
+    try {
+      const res = await fetch("/api/profile-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: identity, photoBase64: null }),
+      });
+      if (!res.ok) throw new Error("remove failed");
+      setPhotos((prev) => ({ ...prev, [identity]: null }));
+      showToast("Profile photo removed");
+    } catch {
+      showToast("Couldn't remove photo");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   // In-app alert for incoming messages: a soft two-tone ding (WebAudio,
   // no sound file needed) plus a short vibration on the phone.
   // Browsers only allow audio after a user gesture, so the context is
@@ -708,6 +958,16 @@ export default function Home() {
       end: start + emoji.length,
     };
     setInput(next);
+    // Remember recently used emojis for the picker's Recent row.
+    setRecentEmojis((prev) => {
+      const nextList = [emoji, ...prev.filter((e) => e !== emoji)].slice(0, 12);
+      try {
+        localStorage.setItem(RECENT_EMOJIS_KEY, JSON.stringify(nextList));
+      } catch {
+        // Storage unavailable — the row just won't persist.
+      }
+      return nextList;
+    });
     if (el && document.activeElement === el) {
       requestAnimationFrame(() => {
         const pos = cursorRef.current?.start ?? next.length;
@@ -741,6 +1001,12 @@ export default function Home() {
   }
 
   async function sendMessage() {
+    // Editing mode: the send button saves the edit instead of
+    // sending a new message.
+    if (editing) {
+      await saveEdit();
+      return;
+    }
     const body = input.trim();
     if (!body || !identity || sending) return;
     ensureAudio();
@@ -775,6 +1041,7 @@ export default function Home() {
       audio_duration: null,
       audio_mime: null,
       has_audio: false,
+      edited_at: null,
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -802,6 +1069,57 @@ export default function Home() {
     } finally {
       setSending(false);
       inputRef.current?.focus();
+    }
+  }
+
+  // --- Editing your own text message (no delete) ---
+
+  function startEdit(m: ChatMessage) {
+    if (!identity || m.sender !== identity || m.kind !== "text") return;
+    setEditing(m);
+    setReplyTo(null);
+    setShowEmoji(false);
+    setInput(m.body);
+    cursorRef.current = { start: m.body.length, end: m.body.length };
+    const el = inputRef.current;
+    if (el) {
+      el.focus();
+      requestAnimationFrame(() =>
+        el.setSelectionRange(m.body.length, m.body.length),
+      );
+    }
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setInput("");
+    cursorRef.current = null;
+  }
+
+  async function saveEdit() {
+    const body = input.trim();
+    if (!body || !editing || !identity || sending) return;
+    const target = editing;
+    setSending(true);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: target.id, sender: identity, body }),
+      });
+      if (!res.ok) throw new Error("edit failed");
+      const data = (await res.json()) as { message: ChatMessage };
+      setMessages((prev) =>
+        prev.map((m) => (m.id === target.id ? data.message : m)),
+      );
+      setEditing(null);
+      setInput("");
+      cursorRef.current = null;
+      inputRef.current?.focus();
+    } catch {
+      showToast("Couldn't edit — try again");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -1028,6 +1346,7 @@ export default function Home() {
       audio_duration: preview.seconds,
       audio_mime: preview.mime,
       has_audio: true,
+      edited_at: null,
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -1198,6 +1517,8 @@ export default function Home() {
 
   const me = identity;
   const other = otherSender(me);
+  const otherPhoto = photos[other];
+  const myPhoto = photos[me];
   const lastOwnRead = [...messages].reverse().find((m) => m.sender === me);
 
   return (
@@ -1208,12 +1529,20 @@ export default function Home() {
       {/* Header */}
       <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-sm">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
-          💙
+          {otherPhoto ? (
+            <img
+              src={otherPhoto}
+              alt=""
+              className="h-full w-full rounded-full object-cover"
+            />
+          ) : (
+            "💙"
+          )}
           <span
             className={`absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
-              connected ? "bg-green-500" : "bg-gray-400"
+              isOnline(presence[other]) ? "bg-green-500" : "bg-gray-400"
             }`}
-            title={connected ? "Online" : "Offline"}
+            title={isOnline(presence[other]) ? "Online" : "Offline"}
           />
         </div>
         <div className="min-w-0 flex-1">
@@ -1222,14 +1551,19 @@ export default function Home() {
           </h1>
           <p
             className={`truncate text-xs ${
-              typingFrom ? "text-ocean" : "text-ink-soft"
+              typingFrom
+                ? "text-ocean"
+                : isOnline(presence[other])
+                  ? "text-green-600"
+                  : "text-ink-soft"
             }`}
           >
             {typingFrom
               ? `${displayName(typingFrom, names)} is typing…`
-              : connected
-                ? `Chatting with ${displayName(other, names)}`
-                : "Offline — reconnecting…"}
+              : formatLastSeen(presence[other]) ||
+                (connected
+                  ? `Chatting with ${displayName(other, names)}`
+                  : "Offline — reconnecting…")}
           </p>
         </div>
         <button
@@ -1249,6 +1583,7 @@ export default function Home() {
         <div
           ref={listRef}
           className="chat-bg flex-1 overflow-y-auto px-4 py-4"
+          style={wallpaper === "default" ? undefined : WALLPAPERS[wallpaper]?.style}
           onClick={() => {
             if (showSettings) setShowSettings(false);
             if (showEmoji) setShowEmoji(false);
@@ -1323,6 +1658,24 @@ export default function Home() {
 
       {/* Composer */}
       <div className="border-t border-line bg-card px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {editing && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-ice px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-amber-600">
+                Editing message
+              </p>
+              <p className="truncate text-xs text-ink-soft">{editing.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="shrink-0 rounded-full px-2 py-1 text-ink-soft"
+              aria-label="Cancel edit"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {replyTo && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-ocean bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">
@@ -1343,6 +1696,25 @@ export default function Home() {
         )}
         {showEmoji && (
           <div className="mb-2 rounded-2xl border border-line bg-ice p-2 shadow-sm">
+            {recentEmojis.length > 0 && (
+              <div className="mb-1">
+                <p className="px-1 pb-1 text-[11px] font-bold text-ink-soft">
+                  Recent
+                </p>
+                <div className="flex flex-wrap gap-0.5">
+                  {recentEmojis.map((e) => (
+                    <button
+                      key={e}
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onClick={() => insertEmoji(e)}
+                      className="rounded-lg px-1 py-1 text-xl transition active:scale-125"
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex gap-1">
               {EMOJI_GROUPS.map((g, i) => (
                 <button
@@ -1480,9 +1852,9 @@ export default function Home() {
                 onClick={() => void sendMessage()}
                 disabled={sending}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
-                aria-label="Send"
+                aria-label={editing ? "Save edit" : "Send"}
               >
-                ➤
+                {editing ? "✓" : "➤"}
               </button>
             ) : (
               <button
@@ -1557,6 +1929,19 @@ export default function Home() {
                 📋 Copy text
               </button>
             )}
+            {reactMenuFor.sender === identity &&
+              reactMenuFor.kind === "text" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    startEdit(reactMenuFor);
+                    setReactMenuFor(null);
+                  }}
+                  className="mt-2 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+                >
+                  ✏️ Edit message
+                </button>
+              )}
             <button
               type="button"
               onClick={() => setReactMenuFor(null)}
@@ -1616,6 +2001,82 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {/* Profile photo (mine — shown on the other phone's header) */}
+            <p className="mt-5 text-sm font-semibold text-ink-soft">
+              My profile photo
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-2xl text-white">
+                {myPhoto ? (
+                  <img
+                    src={myPhoto}
+                    alt="My profile photo"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  "💙"
+                )}
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="rounded-xl bg-ice-deep px-4 py-2.5 text-sm font-bold text-ocean disabled:opacity-50"
+                >
+                  {photoUploading
+                    ? "Uploading…"
+                    : myPhoto
+                      ? "Change photo"
+                      : "Upload a photo"}
+                </button>
+                {myPhoto && (
+                  <button
+                    type="button"
+                    disabled={photoUploading}
+                    onClick={() => void removePhoto()}
+                    className="rounded-xl px-4 py-2 text-sm font-semibold text-red-600 disabled:opacity-50"
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => void onPhotoFile(e)}
+              />
+            </div>
+            {/* Chat wallpaper (per phone) */}
+            <p className="mt-5 text-sm font-semibold text-ink-soft">
+              Chat wallpaper
+            </p>
+            <div className="mt-2 grid grid-cols-6 gap-2">
+              {Object.entries(WALLPAPERS).map(([id, w]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setWallpaper(id);
+                    try {
+                      localStorage.setItem(WALLPAPER_KEY, id);
+                    } catch {
+                      // Storage unavailable — the choice just won't persist.
+                    }
+                  }}
+                  className={`flex h-10 items-center justify-center rounded-xl border-2 text-xs font-bold ${
+                    wallpaper === id ? "border-ocean" : "border-transparent"
+                  } ${id === "default" ? "chat-bg" : ""}`}
+                  style={id === "default" ? undefined : w.style}
+                  aria-label={w.label}
+                  title={w.label}
+                >
+                  {id === "default" ? "✿" : ""}
+                </button>
+              ))}
+            </div>
             <label className="mt-5 block text-sm font-semibold text-ink-soft">
               Person 1&apos;s name
               <input
