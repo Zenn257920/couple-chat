@@ -108,6 +108,11 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingFrom, setTypingFrom] = useState<Sender | null>(null);
   const [input, setInput] = useState("");
+  // Height of the visible area while the on-screen keyboard is open
+  // (the visual viewport shrinks when it appears). When set, the chat
+  // is sized to exactly that height so the latest message sits right
+  // above the keyboard instead of hiding behind it.
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -210,6 +215,28 @@ export default function Home() {
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
   }, [identity, fetchState]);
+
+  // Keep the latest message visible above the on-screen keyboard.
+  // When the keyboard opens, the visual viewport shrinks; size the
+  // chat to exactly the visible height and scroll to the bottom, so
+  // the newest message lands right above the keyboard. When the
+  // keyboard closes, the visible height is full again and the
+  // override is cleared.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      if (vv.height < window.innerHeight - 100) {
+        setViewportHeight(vv.height);
+        requestAnimationFrame(() => scrollToBottom(false));
+        window.setTimeout(() => scrollToBottom(false), 300);
+      } else {
+        setViewportHeight(null);
+      }
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, [scrollToBottom]);
 
   // Memoize the message list so typing in the composer — which
   // re-renders this component on every keystroke — does not re-render
@@ -516,7 +543,10 @@ export default function Home() {
   const lastOwnRead = [...messages].reverse().find((m) => m.sender === me);
 
   return (
-    <div className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line">
+    <div
+      className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
+      style={viewportHeight ? { height: viewportHeight } : undefined}
+    >
       {/* Header */}
       <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-sm">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
@@ -637,6 +667,13 @@ export default function Home() {
             onChange={(e) => {
               setInput(e.target.value);
               pingTyping();
+            }}
+            onFocus={() => {
+              // Keyboard is opening — scroll the latest message up
+              // above it (the visualViewport listener also fires and
+              // re-scrolls once the keyboard finishes opening).
+              requestAnimationFrame(() => scrollToBottom(false));
+              window.setTimeout(() => scrollToBottom(false), 350);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
