@@ -184,8 +184,9 @@ function loadTheme(): Theme {
   } catch {
     // fall through to the default
   }
-  // Telegram-style dark is the default look.
-  return "dark";
+  // Light is the default look (the dark theme is still available in
+  // Settings for anyone who wants it).
+  return "light";
 }
 
 // --- Recently used emojis for the picker (localStorage, max 12) ---
@@ -329,7 +330,7 @@ export default function Home() {
   // Chat wallpaper (per phone, localStorage).
   const [wallpaper, setWallpaper] = useState("default");
   // Theme: Light or Telegram-style Dark (per phone, localStorage).
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
   // Recently used emojis for the picker.
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
   // Profile photos (both phones, data URLs) — fetched once on load.
@@ -1832,8 +1833,8 @@ export default function Home() {
       className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-sm">
+      {/* Header — Telegram-style floating rounded bar */}
+      <header className="mx-3 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
           {otherPhoto ? (
             <img
@@ -1893,7 +1894,7 @@ export default function Home() {
             setDraftNames({ ...names });
             setShowSettings(true);
           }}
-          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
+          className="mx-3 mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-card px-4 py-1.5 text-xs font-semibold text-ocean shadow-md"
         >
           <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
           {formatTogether(togetherSince, nowTick)}
@@ -2007,8 +2008,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Composer */}
-      <div className="border-t border-line bg-card px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {/* Composer — Telegram-style floating rounded bar */}
+      <div className="mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-3xl bg-card px-3 py-2 shadow-lg">
         {editing && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">
