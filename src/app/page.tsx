@@ -1865,8 +1865,7 @@ export default function Home() {
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={listRef}
-          className="chat-bg flex-1 overflow-y-auto px-4 py-4"
-          style={wallpaper === "default" ? undefined : WALLPAPERS[wallpaper]?.style}
+          className="flex-1 overflow-y-auto px-4 py-4"
           onClick={() => {
             if (showSettings) setShowSettings(false);
             if (showEmoji) setShowEmoji(false);
