@@ -128,9 +128,15 @@ export async function sendPushTo(
 ): Promise<void> {
   try {
     const cfg = firebaseConfig();
-    if (!cfg) return; // Firebase not configured yet.
+    if (!cfg) {
+      console.error("FCM skipped: Firebase env vars missing");
+      return; // Firebase not configured yet.
+    }
     const tokens = await getPushTokens(recipient);
-    if (!tokens.length) return;
+    if (!tokens.length) {
+      console.error("FCM skipped: no tokens for", recipient);
+      return;
+    }
     const accessToken = await getAccessToken();
     if (!accessToken) return;
     for (const token of tokens) {
@@ -164,6 +170,8 @@ export async function sendPushTo(
           } else {
             console.error("FCM send failed", res.status, err.error?.message);
           }
+        } else {
+          console.log("FCM send ok to", recipient, res.status);
         }
       } catch (e) {
         console.error("FCM send error", e);
