@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VoiceRecorder } from "capacitor-voice-recorder";
 import {
   DEFAULT_DISPLAY_NAMES,
   displayName,
@@ -135,7 +136,7 @@ export default function Home() {
   const [recSeconds, setRecSeconds] = useState(0);
   const [voicePreview, setVoicePreview] = useState<{
     url: string;
-    blob: Blob;
+    base64: string;
     seconds: number;
     mime: string;
   } | null>(null);
@@ -160,13 +161,11 @@ export default function Home() {
   const pressStart = useRef<{ x: number; y: number } | null>(null);
   const longPressedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
-  // Voice recording / playback refs.
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const mediaChunksRef = useRef<Blob[]>([]);
+  // Voice recording refs (native plugin — see startRecording).
   const recTimerRef = useRef<number | null>(null);
   const recStartedAtRef = useRef(0);
   const discardVoiceRef = useRef(false);
+  const recordingRef = useRef(false);
   const audioCacheRef = useRef(new Map<number, string>());
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -817,84 +816,75 @@ export default function Home() {
 
   // --- Voice messages ---
 
+  // --- Voice messages (native recorder) ---
+  //
+  // Recording uses the capacitor-voice-recorder plugin, NOT the WebView's
+  // getUserMedia/MediaRecorder. The WebView path works in a browser but
+  // fails in the app: even with Microphone ALLOWED in Settings it threw
+  // NotAllowedError (the WebView permission flow via Capacitor's
+  // onPermissionRequest is unreliable on this phone — it worked once,
+  // then kept denying). The plugin records natively with Android's
+  // MediaRecorder (AAC) and asks for the permission itself, so it
+  // bypasses the WebView entirely. On a plain browser the plugin falls
+  // back to its own MediaRecorder implementation.
   const MAX_VOICE_SECONDS = 120;
 
-  // Stop the mic stream and timer (also used as an unmount cleanup).
-  function stopVoiceCapture() {
+  // Stop the timer and, if a recording is in progress, stop the native
+  // recorder (also used as an unmount cleanup).
+  async function stopVoiceCapture() {
     if (recTimerRef.current) window.clearInterval(recTimerRef.current);
     recTimerRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
+    if (recordingRef.current) {
+      recordingRef.current = false;
+      setIsRecording(false);
+      discardVoiceRef.current = true;
+      try {
+        await VoiceRecorder.stopRecording();
+      } catch {
+        // Nothing to stop (already stopped) — safe to ignore.
+      }
+    }
   }
 
   // Release the mic if this screen ever unmounts mid-recording.
-  useEffect(() => () => stopVoiceCapture(), []);
+  useEffect(() => () => void stopVoiceCapture(), []);
 
   async function startRecording() {
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setVoiceError("Voice recording isn't supported on this phone.");
-      return;
-    }
     setVoiceError("");
     setVoicePreview(null);
     try {
-      // Diagnose first: is a mic even visible to the WebView? If another
-      // app is holding the mic (call, voice recorder), enumerateDevices
-      // returns no audio inputs at all.
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter((d) => d.kind === "audioinput");
-      if (mics.length === 0) {
-        setVoiceError(
-          "No microphone found — another app may be using the mic. Close other apps (or restart the phone) and try again.",
-        );
+      const canRecord = await VoiceRecorder.canDeviceVoiceRecord();
+      if (!canRecord.value) {
+        setVoiceError("This phone can't record voice messages.");
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "";
-      const rec = new MediaRecorder(stream, {
-        ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: 24000,
-      });
-      mediaChunksRef.current = [];
-      rec.ondataavailable = (e) => {
-        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
-      };
-      rec.onstop = () => {
-        stopVoiceCapture();
-        if (discardVoiceRef.current) {
-          discardVoiceRef.current = false;
+      const has = await VoiceRecorder.hasAudioRecordingPermission();
+      if (!has.value) {
+        const req = await VoiceRecorder.requestAudioRecordingPermission();
+        if (!req.value) {
+          setVoiceError(
+            "Mic permission is off — allow Microphone for We Talk in Settings, then tap the mic again.",
+          );
           return;
         }
-        const blob = new Blob(mediaChunksRef.current, {
-          type: rec.mimeType || "audio/webm",
-        });
-        const seconds = Math.max(
-          1,
-          Math.round((Date.now() - recStartedAtRef.current) / 1000),
-        );
-        setVoicePreview({
-          url: URL.createObjectURL(blob),
-          blob,
-          seconds,
-          mime: blob.type || "audio/webm",
-        });
-      };
-      mediaRecorderRef.current = rec;
-      mediaStreamRef.current = stream;
+      }
+      const started = await VoiceRecorder.startRecording();
+      if (!started.value) {
+        setVoiceError("Couldn't start recording — try again.");
+        return;
+      }
       recStartedAtRef.current = Date.now();
-      rec.start(250);
+      recordingRef.current = true;
       setRecSeconds(0);
       setIsRecording(true);
       recTimerRef.current = window.setInterval(() => {
         const s = Math.floor((Date.now() - recStartedAtRef.current) / 1000);
         setRecSeconds(s);
-        if (s >= MAX_VOICE_SECONDS) stopRecording();
+        if (s >= MAX_VOICE_SECONDS) void stopRecording();
       }, 500);
     } catch (e) {
-      // Show the REAL error (NotAllowedError, NotReadableError, …) instead
-      // of a generic "blocked" message, so a failure is diagnosable.
+      // Show the REAL error instead of a generic message, so a failure
+      // is diagnosable.
       const err = e as Error | undefined;
       setVoiceError(
         `Mic error (${err?.name ?? "unknown"}): ${err?.message ?? "could not start recording"}`,
@@ -902,32 +892,45 @@ export default function Home() {
     }
   }
 
-  function stopRecording() {
+  async function stopRecording() {
+    if (!recordingRef.current) return;
     if (recTimerRef.current) window.clearInterval(recTimerRef.current);
     recTimerRef.current = null;
+    recordingRef.current = false;
     setIsRecording(false);
-    const rec = mediaRecorderRef.current;
-    mediaRecorderRef.current = null;
-    if (rec && rec.state !== "inactive") rec.stop();
+    const discard = discardVoiceRef.current;
+    discardVoiceRef.current = false;
+    try {
+      const result = await VoiceRecorder.stopRecording();
+      if (discard) return;
+      const base64 = result.value.recordDataBase64;
+      if (!base64) {
+        setVoiceError("Recording came back empty — try again.");
+        return;
+      }
+      const mime = result.value.mimeType || "audio/aac";
+      const seconds = Math.max(1, Math.round(result.value.msDuration / 1000));
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: mime });
+      setVoicePreview({
+        url: URL.createObjectURL(blob),
+        base64,
+        seconds,
+        mime,
+      });
+    } catch (e) {
+      const err = e as Error | undefined;
+      setVoiceError(
+        `Mic error (${err?.name ?? "unknown"}): ${err?.message ?? "could not stop recording"}`,
+      );
+    }
   }
 
   function cancelRecording() {
     discardVoiceRef.current = true;
-    stopRecording();
+    void stopRecording();
     setVoicePreview(null);
     setRecSeconds(0);
-  }
-
-  function blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        resolve(result.split(",")[1] ?? "");
-      };
-      reader.onerror = () => reject(new Error("read failed"));
-      reader.readAsDataURL(blob);
-    });
   }
 
   async function sendVoice() {
@@ -958,7 +961,8 @@ export default function Home() {
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
     try {
-      const base64 = await blobToBase64(preview.blob);
+      // The native recorder already returns base64 — no conversion needed.
+      const base64 = preview.base64;
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
