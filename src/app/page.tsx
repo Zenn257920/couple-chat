@@ -1833,9 +1833,10 @@ export default function Home() {
       className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* Header — Telegram-style floating rounded bar, edges aligned
-          with the message column (mx-4 = the list's px-4). */}
-      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-xl">
+      {/* Header — Telegram-style: full-width bar at the very top,
+          edge to edge (no side margins, so nothing sticks out), with a
+          shadow so it floats above the chat. */}
+      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-md">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
           {otherPhoto ? (
             <img
@@ -1895,7 +1896,7 @@ export default function Home() {
             setDraftNames({ ...names });
             setShowSettings(true);
           }}
-          className="mx-4 mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-card px-4 py-1.5 text-xs font-semibold text-ocean shadow-md"
+          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
         >
           <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
           {formatTogether(togetherSince, nowTick)}
