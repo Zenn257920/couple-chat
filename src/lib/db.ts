@@ -24,6 +24,11 @@ export type ChatMessage = {
   has_audio: boolean;
   // Set when the sender edits their own text message.
   edited_at: string | null;
+  // Photo messages only. photo_base64 is NEVER sent with the list —
+  // it is fetched lazily per photo via /api/photo, like voice audio.
+  photo_width: number | null;
+  photo_height: number | null;
+  has_photo: boolean;
 };
 
 export type TypingState = {
@@ -45,11 +50,13 @@ export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   // arrived via push, whose text comes straight from the POST).
   const rows = await sql`
     SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
-      audio_duration, audio_mime, has_audio, edited_at
+      audio_duration, audio_mime, has_audio, edited_at,
+      photo_width, photo_height, has_photo
     FROM (
       SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
         audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
-        edited_at
+        edited_at,
+        photo_width, photo_height, (photo_base64 IS NOT NULL) AS has_photo
       FROM chat_messages
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit}
@@ -90,11 +97,18 @@ export type VoiceData = {
   audioMime: string;
 };
 
+export type PhotoData = {
+  photoBase64: string;
+  photoWidth: number;
+  photoHeight: number;
+};
+
 export async function insertMessage(
   sender: Sender,
   body: string,
   replyToId?: number | null,
   voice?: VoiceData | null,
+  photo?: PhotoData | null,
 ): Promise<ChatMessage> {
   const sql = getSql();
   // Only link the reply when the quoted message really exists.
@@ -103,13 +117,14 @@ export async function insertMessage(
     const target = await sql`SELECT id FROM chat_messages WHERE id = ${replyToId}`;
     if (target.length) replyTo = replyToId;
   }
-  const kind = voice ? "voice" : "text";
+  const kind = photo ? "photo" : voice ? "voice" : "text";
   const rows = await sql`
-    INSERT INTO chat_messages (sender, body, kind, reply_to_id, audio_base64, audio_duration, audio_mime)
-    VALUES (${sender}, ${body}, ${kind}, ${replyTo}, ${voice?.audioBase64 ?? null}, ${voice?.audioDuration ?? null}, ${voice?.audioMime ?? null})
+    INSERT INTO chat_messages (sender, body, kind, reply_to_id, audio_base64, audio_duration, audio_mime, photo_base64, photo_width, photo_height)
+    VALUES (${sender}, ${body}, ${kind}, ${replyTo}, ${voice?.audioBase64 ?? null}, ${voice?.audioDuration ?? null}, ${voice?.audioMime ?? null}, ${photo?.photoBase64 ?? null}, ${photo?.photoWidth ?? null}, ${photo?.photoHeight ?? null})
     RETURNING id, sender, body, kind, created_at, read_at, reply_to_id,
       audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
-      edited_at
+      edited_at,
+      photo_width, photo_height, (photo_base64 IS NOT NULL) AS has_photo
   `;
   const message = rows[0] as unknown as ChatMessage;
   message.reactions = [];
@@ -136,7 +151,8 @@ export async function updateMessage(
     WHERE id = ${messageId} AND sender = ${sender} AND kind = 'text'
     RETURNING id, sender, body, kind, created_at, read_at, reply_to_id,
       audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio,
-      edited_at
+      edited_at,
+      photo_width, photo_height, (photo_base64 IS NOT NULL) AS has_photo
   `;
   if (!rows.length) return null;
   const message = rows[0] as unknown as ChatMessage;
@@ -155,6 +171,44 @@ export async function updateMessage(
     else message.reactions.push({ emoji: r.emoji, senders: [r.sender] });
   }
   return message;
+}
+
+// Fetch one photo message's image (lazy — never part of the list).
+export async function getPhoto(
+  messageId: number,
+): Promise<{ photoBase64: string } | null> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT photo_base64
+    FROM chat_messages
+    WHERE id = ${messageId} AND photo_base64 IS NOT NULL
+  `;
+  if (!rows.length) return null;
+  return { photoBase64: (rows[0] as unknown as { photo_base64: string }).photo_base64 };
+}
+
+// --- Shared couple settings (key/value, both phones agree) ---
+
+export async function getMeta(key: string): Promise<string | null> {
+  const sql = getSql();
+  const rows = await sql`SELECT value FROM chat_meta WHERE key = ${key}`;
+  if (!rows.length) return null;
+  return (rows[0] as unknown as { value: string }).value;
+}
+
+export async function setMeta(key: string, value: string): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO chat_meta (key, value, updated_at)
+    VALUES (${key}, ${value}, now())
+    ON CONFLICT (key) DO UPDATE
+      SET value = EXCLUDED.value, updated_at = now()
+  `;
+}
+
+export async function deleteMeta(key: string): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM chat_meta WHERE key = ${key}`;
 }
 
 // --- Online / last-seen presence ---

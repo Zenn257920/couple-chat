@@ -83,6 +83,9 @@ export async function POST(req: Request) {
       audioBase64?: unknown;
       audioDuration?: unknown;
       audioMime?: unknown;
+      photoBase64?: unknown;
+      photoWidth?: unknown;
+      photoHeight?: unknown;
     };
     if (data.sender !== "kaung" && data.sender !== "love") {
       return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
@@ -95,7 +98,34 @@ export async function POST(req: Request) {
     // (~6 min) so one upload can never blow up the database.
     let body: string;
     let voice: { audioBase64: string; audioDuration: number; audioMime: string } | null = null;
-    if (data.kind === "voice") {
+    let photo: { photoBase64: string; photoWidth: number; photoHeight: number } | null = null;
+    if (data.kind === "photo") {
+      // Photos are compressed client-side to max 1200px JPEG
+      // (~150–400 KB); cap at 2,000,000 base64 chars so one upload
+      // can never blow up the database. The image itself is fetched
+      // lazily via /api/photo and never rides the message list.
+      if (
+        typeof data.photoBase64 !== "string" ||
+        data.photoBase64.length < 100 ||
+        data.photoBase64.length > 2_000_000 ||
+        typeof data.photoWidth !== "number" ||
+        !Number.isInteger(data.photoWidth) ||
+        data.photoWidth < 1 ||
+        data.photoWidth > 4000 ||
+        typeof data.photoHeight !== "number" ||
+        !Number.isInteger(data.photoHeight) ||
+        data.photoHeight < 1 ||
+        data.photoHeight > 4000
+      ) {
+        return NextResponse.json({ error: "Invalid photo data" }, { status: 400 });
+      }
+      body = "📷 Photo";
+      photo = {
+        photoBase64: data.photoBase64,
+        photoWidth: data.photoWidth,
+        photoHeight: data.photoHeight,
+      };
+    } else if (data.kind === "voice") {
       if (
         typeof data.audioBase64 !== "string" ||
         data.audioBase64.length < 100 ||
@@ -135,6 +165,7 @@ export async function POST(req: Request) {
       body,
       typeof data.replyToId === "number" ? data.replyToId : null,
       voice,
+      photo,
     );
     // Notify the other phone with a system notification (FCM). Fire and
     // forget: push must never delay or break the message response.

@@ -177,6 +177,19 @@ function formatLastSeen(iso: string | null): string {
   })} ${time}`;
 }
 
+// Live Together counter: days + ticking HH:MM:SS since the date.
+function formatTogether(since: string, nowMs: number): string {
+  const start = new Date(`${since}T00:00:00`).getTime();
+  const diff = Math.max(0, nowMs - start);
+  const days = Math.floor(diff / 86_400_000);
+  const rest = diff % 86_400_000;
+  const h = Math.floor(rest / 3_600_000);
+  const m = Math.floor((rest % 3_600_000) / 60_000);
+  const s = Math.floor((rest % 60_000) / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${days} day${days === 1 ? "" : "s"} • ${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
 // Voice message durations as m:ss.
 function formatVoiceTime(total: number): string {
   const s = Math.max(0, Math.floor(total));
@@ -252,6 +265,18 @@ export default function Home() {
   });
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  // Chat photos: cached data URLs by message id (fetched lazily on
+  // tap, like voice audio), plus the fullscreen lightbox.
+  const [photoUrls, setPhotoUrls] = useState<Record<number, string>>({});
+  const [loadingPhotoId, setLoadingPhotoId] = useState<number | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [photoSending, setPhotoSending] = useState(false);
+  const photoCacheRef = useRef(new Map<number, string>());
+  const chatPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  // Together counter: the date both phones share, and a 1s ticker
+  // that makes the counter live.
+  const [togetherSince, setTogetherSince] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   // Voice messages: tap the mic to record, tap stop, then send.
   const [isRecording, setIsRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
@@ -474,6 +499,29 @@ export default function Home() {
     })();
   }, [identity]);
 
+  // Together date: shared by both phones, fetched once on open.
+  useEffect(() => {
+    if (!identity) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/together", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { date: string | null };
+        setTogetherSince(data.date);
+      } catch {
+        // No counter until a date is set in Settings.
+      }
+    })();
+  }, [identity]);
+
+  // Tick the Together counter once a second (only while a date is
+  // set — the message list is memoized, so this re-render is cheap).
+  useEffect(() => {
+    if (!togetherSince) return;
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [togetherSince]);
+
   // Grow the composer with the text (Telegram-style), up to ~5 lines.
   // Runs after every keystroke and after send clears the input.
   useEffect(() => {
@@ -664,6 +712,48 @@ export default function Home() {
                         )}
                       </p>
                     </div>
+                  ) : m.kind === "photo" && m.has_photo ? (
+                    <div>
+                      {photoUrls[m.id] ? (
+                        <button
+                          type="button"
+                          onClick={() => setLightbox(photoUrls[m.id])}
+                          className="block overflow-hidden rounded-xl"
+                        >
+                          <img
+                            src={photoUrls[m.id]}
+                            alt="Photo"
+                            className="block max-h-72 w-full object-cover"
+                          />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void loadPhoto(m.id)}
+                          disabled={loadingPhotoId === m.id}
+                          className={`flex w-48 flex-col items-center justify-center gap-1 rounded-xl py-8 text-sm font-semibold ${
+                            own ? "bg-white/20 text-white" : "bg-ice text-ocean"
+                          }`}
+                        >
+                          <span className="text-3xl">📷</span>
+                          {loadingPhotoId === m.id
+                            ? "Loading…"
+                            : "Tap to view photo"}
+                        </button>
+                      )}
+                      <p
+                        className={`mt-1 text-right text-[11px] ${
+                          own ? "text-blue-200" : "text-ink-soft"
+                        }`}
+                      >
+                        {formatTime(m.created_at)}
+                        {own && (
+                          <span className="ml-1">
+                            {m.read_at ? "✓✓" : "✓"}
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   ) : (
                     <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                       {m.body}
@@ -733,7 +823,7 @@ export default function Home() {
         <div ref={bottomRef} />
       </div>
     );
-  }, [messages, identity, names, typingFrom, playingId, loadingAudioId]);
+  }, [messages, identity, names, typingFrom, playingId, loadingAudioId, photoUrls, loadingPhotoId]);
 
   // Register this phone for full push notifications (APK only). FCM
   // gives the phone a device token; the server stores it so a message
@@ -811,9 +901,14 @@ export default function Home() {
 
   // --- Profile photo (one per person, stored server-side) ---
 
-  // Compress a picked photo to max 256px JPEG (~20–50 KB) so it fits
-  // in the database.
-  async function compressPhoto(file: File): Promise<string | null> {
+  // Compress a picked image to a max dimension JPEG. Profile photos
+  // use 256px / 0.85 (~20–50 KB); chat photos use 1200px / 0.82
+  // (~150–400 KB).
+  async function compressImage(
+    file: File,
+    maxSize: number,
+    quality: number,
+  ): Promise<{ base64: string; width: number; height: number } | null> {
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -822,7 +917,7 @@ export default function Home() {
         im.onerror = () => reject(new Error("bad image"));
         im.src = url;
       });
-      const scale = Math.min(1, 256 / Math.max(img.width, img.height));
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
       const w = Math.max(1, Math.round(img.width * scale));
       const h = Math.max(1, Math.round(img.height * scale));
       const canvas = document.createElement("canvas");
@@ -831,8 +926,10 @@ export default function Home() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
       ctx.drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      return dataUrl.split(",")[1] ?? null;
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      const base64 = dataUrl.split(",")[1] ?? null;
+      if (!base64) return null;
+      return { base64, width: w, height: h };
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -844,17 +941,17 @@ export default function Home() {
     if (!file || !identity) return;
     setPhotoUploading(true);
     try {
-      const base64 = await compressPhoto(file);
-      if (!base64) throw new Error("compress failed");
+      const compressed = await compressImage(file, 256, 0.85);
+      if (!compressed) throw new Error("compress failed");
       const res = await fetch("/api/profile-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: identity, photoBase64: base64 }),
+        body: JSON.stringify({ sender: identity, photoBase64: compressed.base64 }),
       });
       if (!res.ok) throw new Error("upload failed");
       setPhotos((prev) => ({
         ...prev,
-        [identity]: `data:image/jpeg;base64,${base64}`,
+        [identity]: `data:image/jpeg;base64,${compressed.base64}`,
       }));
       showToast("Profile photo updated ✓");
     } catch {
@@ -880,6 +977,123 @@ export default function Home() {
       showToast("Couldn't remove photo");
     } finally {
       setPhotoUploading(false);
+    }
+  }
+
+  // --- Chat photos (send a photo as a message) ---
+
+  async function onChatPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !identity || photoSending) return;
+    setPhotoSending(true);
+    let optimisticId = 0;
+    try {
+      const compressed = await compressImage(file, 1200, 0.82);
+      if (!compressed) throw new Error("compress failed");
+      const dataUrl = `data:image/jpeg;base64,${compressed.base64}`;
+      const replyingTo = replyTo;
+      setReplyTo(null);
+      const optimistic: ChatMessage = {
+        id: -Date.now(),
+        sender: identity,
+        body: "📷 Photo",
+        kind: "photo",
+        created_at: new Date().toISOString(),
+        read_at: null,
+        reply_to_id: replyingTo?.id ?? null,
+        reply_to: replyingTo
+          ? {
+              id: replyingTo.id,
+              sender: replyingTo.sender,
+              body: replyingTo.body,
+            }
+          : null,
+        reactions: [],
+        audio_duration: null,
+        audio_mime: null,
+        has_audio: false,
+        edited_at: null,
+        photo_width: compressed.width,
+        photo_height: compressed.height,
+        has_photo: true,
+      };
+      optimisticId = optimistic.id;
+      photoCacheRef.current.set(optimistic.id, dataUrl);
+      setPhotoUrls((prev) => ({ ...prev, [optimistic.id]: dataUrl }));
+      setMessages((prev) => [...prev, optimistic]);
+      requestAnimationFrame(() => scrollToBottom());
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: identity,
+          kind: "photo",
+          photoBase64: compressed.base64,
+          photoWidth: compressed.width,
+          photoHeight: compressed.height,
+          replyToId: replyingTo?.id ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error("send failed");
+      const data = (await res.json()) as { message: ChatMessage };
+      // Move the cached image from the optimistic id to the real id.
+      photoCacheRef.current.set(data.message.id, dataUrl);
+      setPhotoUrls((prev) => {
+        const next = { ...prev, [data.message.id]: dataUrl };
+        delete next[optimistic.id];
+        return next;
+      });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === optimistic.id ? data.message : m)),
+      );
+      await fetchState();
+    } catch {
+      showToast("Couldn't send photo");
+      if (optimisticId) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      }
+    } finally {
+      setPhotoSending(false);
+    }
+  }
+
+  // Load a photo message's image on tap (cached afterwards).
+  async function loadPhoto(id: number) {
+    const cached = photoCacheRef.current.get(id);
+    if (cached) {
+      setPhotoUrls((prev) => ({ ...prev, [id]: cached }));
+      return;
+    }
+    setLoadingPhotoId(id);
+    try {
+      const res = await fetch(`/api/photo?id=${id}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("load failed");
+      const data = (await res.json()) as { photoBase64: string };
+      const dataUrl = `data:image/jpeg;base64,${data.photoBase64}`;
+      photoCacheRef.current.set(id, dataUrl);
+      setPhotoUrls((prev) => ({ ...prev, [id]: dataUrl }));
+    } catch {
+      showToast("Couldn't load photo");
+    } finally {
+      setLoadingPhotoId((cur) => (cur === id ? null : cur));
+    }
+  }
+
+  // --- Together date (shared by both phones) ---
+
+  async function saveTogetherDate(date: string) {
+    setTogetherSince(date || null);
+    try {
+      const res = await fetch("/api/together", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: date || null }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      showToast(date ? "Together date saved ✓" : "Together date cleared");
+    } catch {
+      showToast("Couldn't save date");
     }
   }
 
@@ -1042,6 +1256,9 @@ export default function Home() {
       audio_mime: null,
       has_audio: false,
       edited_at: null,
+      photo_width: null,
+      photo_height: null,
+      has_photo: false,
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -1347,6 +1564,9 @@ export default function Home() {
       audio_mime: preview.mime,
       has_audio: true,
       edited_at: null,
+      photo_width: null,
+      photo_height: null,
+      has_photo: false,
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -1578,6 +1798,21 @@ export default function Home() {
         </button>
       </header>
 
+      {/* Live Together counter (pinned-style bar under the header).
+          Tap it to change the date in Settings. */}
+      {togetherSince && (
+        <button
+          type="button"
+          onClick={() => {
+            setDraftNames({ ...names });
+            setShowSettings(true);
+          }}
+          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
+        >
+          💙 Together {formatTogether(togetherSince, nowTick)}
+        </button>
+      )}
+
       {/* Messages */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
@@ -1653,6 +1888,28 @@ export default function Home() {
           <span className="rounded-full bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg">
             {toast}
           </span>
+        </div>
+      )}
+
+      {/* Fullscreen photo viewer (tap a photo, tap anywhere to close) */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt="Photo"
+            className="max-h-full max-w-full rounded-xl object-contain"
+          />
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 rounded-full bg-white/20 px-3 py-2 text-sm font-bold text-white"
+            aria-label="Close photo"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1804,6 +2061,22 @@ export default function Home() {
           </div>
         ) : (
           <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => chatPhotoInputRef.current?.click()}
+              disabled={photoSending}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ice-deep text-xl text-ocean transition active:scale-95 disabled:opacity-40"
+              aria-label="Send a photo"
+            >
+              📷
+            </button>
+            <input
+              ref={chatPhotoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => void onChatPhotoFile(e)}
+            />
             <button
               onClick={() => {
                 ensureAudio();
@@ -2077,6 +2350,20 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            {/* Together date (shared by both phones) */}
+            <label className="mt-5 block text-sm font-semibold text-ink-soft">
+              Together since
+              <input
+                type="date"
+                value={togetherSince ?? ""}
+                onChange={(e) => void saveTogetherDate(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
+              />
+            </label>
+            <p className="mt-1 text-xs text-ink-soft">
+              Shows a live day + time counter under the header. Tap the
+              counter to change the date.
+            </p>
             <label className="mt-5 block text-sm font-semibold text-ink-soft">
               Person 1&apos;s name
               <input
