@@ -1077,9 +1077,7 @@ export default function Home() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-ocean text-4xl shadow-lg">
             💙
           </div>
-          <h1 className="mt-6 text-2xl font-bold text-ink">
-            Person 1 &amp; Person 2
-          </h1>
+          <h1 className="mt-6 text-2xl font-bold text-ink">We Talk</h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-soft">
             Our private little chat 💙
             <br />

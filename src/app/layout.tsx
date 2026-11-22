@@ -2,14 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Person 1 & Person 2 💙",
-  description:
-    "Private real-time chat for Person 1 and Person 2 — just the two of us.",
+  title: "We Talk 💙",
+  description: "Private real-time chat for the two of us.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Person 1 & Person 2",
+    title: "We Talk",
   },
 };
 
