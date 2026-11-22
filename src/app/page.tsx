@@ -131,6 +131,8 @@ export default function Home() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   // Message the long-press react menu is open for.
   const [reactMenuFor, setReactMenuFor] = useState<ChatMessage | null>(null);
+  // Confirming an identity reset in Settings.
+  const [confirmResetIdentity, setConfirmResetIdentity] = useState(false);
   // Voice messages: tap the mic to record, tap stop, then send.
   const [isRecording, setIsRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
@@ -607,6 +609,19 @@ export default function Home() {
     ensureAudio();
   }
 
+  // Identity lock: a phone's identity is picked once (first open) and
+  // cannot be switched in Settings — otherwise either phone could
+  // impersonate the other person (and mis-route push notifications).
+  // Resetting clears the saved identity and shows the first-open
+  // picker again; push re-registers under the new identity because
+  // the registration effect depends on `identity`.
+  function resetIdentity() {
+    localStorage.removeItem(IDENTITY_KEY);
+    setIdentity(null);
+    setShowSettings(false);
+    setConfirmResetIdentity(false);
+  }
+
   function saveNames() {
     const cleaned: Names = {
       kaung: draftNames.kaung.trim() || DEFAULT_DISPLAY_NAMES.kaung,
@@ -615,6 +630,7 @@ export default function Home() {
     localStorage.setItem(NAMES_KEY, JSON.stringify(cleaned));
     setNames(cleaned);
     setShowSettings(false);
+    setConfirmResetIdentity(false);
   }
 
   // In-app alert for incoming messages: a soft two-tone ding (WebAudio,
@@ -1558,23 +1574,48 @@ export default function Home() {
           <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-xl sm:rounded-3xl">
             <h2 className="text-lg font-bold text-ink">Settings</h2>
             <p className="mt-4 text-sm font-semibold text-ink-soft">
-              Who&apos;s using this phone
+              This phone is
             </p>
-            <div className="mt-2 flex gap-2">
-              {(["kaung", "love"] as Sender[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => pickIdentity(s)}
-                  className={`flex-1 rounded-xl px-3 py-3 text-sm font-bold ${
-                    me === s
-                      ? "bg-ocean text-white"
-                      : "bg-ice-deep text-ocean"
-                  }`}
-                >
-                  {displayName(s, names)}
-                </button>
-              ))}
+            <div className="mt-2 flex items-center justify-between rounded-xl bg-ice px-3 py-3">
+              <span className="text-sm font-bold text-ink">
+                {displayName(me, names)} (
+                {me === "kaung" ? "Person 1" : "Person 2"}) 🔒
+              </span>
+              <span className="text-xs text-ink-soft">
+                Locked to this phone
+              </span>
             </div>
+            {!confirmResetIdentity ? (
+              <button
+                type="button"
+                onClick={() => setConfirmResetIdentity(true)}
+                className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-ink-soft"
+              >
+                Reset identity…
+              </button>
+            ) : (
+              <div className="mt-2 rounded-xl border border-line bg-ice p-3">
+                <p className="text-sm text-ink">
+                  This phone will ask who is using it again. Are you sure?
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmResetIdentity(false)}
+                    className="flex-1 rounded-xl bg-ice-deep px-4 py-2 text-sm font-bold text-ink"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetIdentity}
+                    className="flex-1 rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white"
+                  >
+                    Yes, reset
+                  </button>
+                </div>
+              </div>
+            )}
             <label className="mt-5 block text-sm font-semibold text-ink-soft">
               Person 1&apos;s name
               <input
@@ -1597,7 +1638,10 @@ export default function Home() {
             </label>
             <div className="mt-5 flex gap-2">
               <button
-                onClick={() => setShowSettings(false)}
+                onClick={() => {
+                  setShowSettings(false);
+                  setConfirmResetIdentity(false);
+                }}
                 className="flex-1 rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ink"
               >
                 Close
