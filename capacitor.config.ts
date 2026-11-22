@@ -14,7 +14,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // (.github/workflows/android.yml).
 const config: CapacitorConfig = {
   appId: "com.kaung.lovechat",
-  appName: "ကိုကို & ကလေးလေး",
+  appName: "Person 1 & Person 2",
   webDir: "out",
   server: {
     url: "https://couple-chat-umber.vercel.app",

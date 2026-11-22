@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ကိုကို & ကလေးလေး 💙",
+  title: "Person 1 & Person 2 💙",
   description:
-    "Private real-time chat for ကိုကို and ကလေးလေး — just the two of us.",
+    "Private real-time chat for Person 1 and Person 2 — just the two of us.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "ကိုကို & ကလေးလေး",
+    title: "Person 1 & Person 2",
   },
 };
 
@@ -26,7 +26,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="my">
+    <html lang="en">
       <body className="antialiased">{children}</body>
     </html>
   );

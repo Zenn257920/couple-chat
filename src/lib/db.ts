@@ -76,3 +76,31 @@ export async function markRead(forSender: Sender): Promise<void> {
     WHERE sender = ${other} AND read_at IS NULL
   `;
 }
+
+// --- Push notification device tokens (FCM) ---
+
+export async function registerPushToken(
+  sender: Sender,
+  token: string,
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO push_tokens (sender, token)
+    VALUES (${sender}, ${token})
+    ON CONFLICT (token) DO UPDATE
+      SET sender = EXCLUDED.sender, updated_at = now()
+  `;
+}
+
+export async function getPushTokens(sender: Sender): Promise<string[]> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT token FROM push_tokens WHERE sender = ${sender}
+  `;
+  return (rows as unknown as { token: string }[]).map((r) => r.token);
+}
+
+export async function deletePushToken(token: string): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM push_tokens WHERE token = ${token}`;
+}

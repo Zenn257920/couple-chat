@@ -1,12 +1,12 @@
-// Display names for the couple. Internal sender ids in the DB/API
+// Display names shown on screen. Internal sender ids in the DB/API
 // stay 'kaung' / 'love' — only what is shown on screen changes here.
-// The "love" display name is editable in the app settings (stored in
-// localStorage); this is the default.
+// Defaults are "Person 1" (Kaung) and "Person 2" (his girlfriend);
+// each phone can still rename them in Settings (localStorage).
 export type Sender = "kaung" | "love";
 
 export const DEFAULT_DISPLAY_NAMES: Record<Sender, string> = {
-  kaung: "ကိုကို",
-  love: "ကလေးလေး",
+  kaung: "Person 1",
+  love: "Person 2",
 };
 
 export function displayName(
