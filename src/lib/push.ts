@@ -27,9 +27,11 @@ function firebaseConfig(): {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   // The key is pasted by hand into Vercel, so be forgiving about its
   // shape: it may carry surrounding quotes (copied from the JSON),
-  // literal \n sequences, or real newlines. Normalise all of those to
-  // a clean PEM block; a key pasted without its BEGIN/END header lines
-  // still cannot work and is reported as a format problem at sign time.
+  // literal \n sequences, or real newlines. Normalise all of those,
+  // then keep only the PEM block itself so stray characters pasted
+  // around it (quotes, spaces) cannot break signing. A key whose
+  // paste was cut off in the middle still cannot work — that is
+  // reported as a format problem at sign time.
   let privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
   if (
     privateKey &&
@@ -38,7 +40,11 @@ function firebaseConfig(): {
   ) {
     privateKey = privateKey.slice(1, -1).trim();
   }
-  privateKey = privateKey?.replace(/\\n/g, "\n");
+  privateKey = privateKey?.replace(/\\n/g, "\n").replace(/\r/g, "");
+  const pem = privateKey?.match(
+    /-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/,
+  );
+  if (pem) privateKey = pem[0];
   if (!projectId || !clientEmail || !privateKey) return null;
   return { projectId, clientEmail, privateKey };
 }
@@ -93,13 +99,17 @@ async function getAccessToken(): Promise<string | null> {
     return data.access_token;
   } catch (e) {
     // A decoder error here almost always means the pasted private key
-    // is not a clean PEM block (quotes around it, missing BEGIN/END
-    // lines, or truncated). Log only the shape, never the key itself.
+    // is not a complete PEM block (paste cut off in the middle, or
+    // missing BEGIN/END lines). Log only the shape, never the key.
     const cfg = firebaseConfig();
-    const looksPem = !!cfg?.privateKey.includes("BEGIN PRIVATE KEY");
+    const key = cfg?.privateKey ?? "";
     console.error(
-      "FCM access token error (key looks like PEM:",
-      looksPem,
+      "FCM access token error (key length:",
+      key.length,
+      "has BEGIN:",
+      key.includes("BEGIN PRIVATE KEY"),
+      "has END:",
+      key.includes("END PRIVATE KEY"),
       ")",
       e,
     );
