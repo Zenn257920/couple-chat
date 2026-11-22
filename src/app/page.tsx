@@ -12,7 +12,6 @@ import {
   LoaderCircle,
   Lock,
   Mic,
-  Moon,
   PartyPopper,
   Pause,
   PawPrint,
@@ -26,7 +25,6 @@ import {
   Smartphone,
   Smile,
   Square,
-  Sun,
   UtensilsCrossed,
   X,
   type LucideIcon,
@@ -120,45 +118,27 @@ function formatTime(iso: string): string {
 // --- Chat wallpaper (per phone, localStorage) ---
 
 const WALLPAPER_KEY = "lovechat.wallpaper";
-const WALLPAPERS: Record<
-  string,
-  { label: string; style: React.CSSProperties; darkStyle: React.CSSProperties }
-> = {
-  default: { label: "Default dots", style: {}, darkStyle: {} },
+const WALLPAPERS: Record<string, { label: string; style: React.CSSProperties }> = {
+  default: { label: "Default dots", style: {} },
   ocean: {
     label: "Ocean mist",
     style: { background: "linear-gradient(180deg, #D8ECF6 0%, #EAF2F8 100%)" },
-    darkStyle: {
-      background: "linear-gradient(180deg, #0f1f2e 0%, #0e1621 100%)",
-    },
   },
   sunset: {
     label: "Sunset glow",
     style: { background: "linear-gradient(180deg, #FBE0C8 0%, #FDF3E7 100%)" },
-    darkStyle: {
-      background: "linear-gradient(180deg, #2b1a12 0%, #1a120c 100%)",
-    },
   },
   mint: {
     label: "Mint leaf",
     style: { background: "linear-gradient(180deg, #D7EEE0 0%, #EAF6EE 100%)" },
-    darkStyle: {
-      background: "linear-gradient(180deg, #12211a 0%, #0e1621 100%)",
-    },
   },
   lavender: {
     label: "Lavender",
     style: { background: "linear-gradient(180deg, #E5DEF7 0%, #F3F0FB 100%)" },
-    darkStyle: {
-      background: "linear-gradient(180deg, #1d1830 0%, #14101f 100%)",
-    },
   },
   rose: {
     label: "Rose petal",
     style: { background: "linear-gradient(180deg, #F9DCE2 0%, #FDF0F2 100%)" },
-    darkStyle: {
-      background: "linear-gradient(180deg, #2a1219 0%, #1c0e12 100%)",
-    },
   },
 };
 
@@ -170,23 +150,6 @@ function loadWallpaper(): string {
     // fall through to default
   }
   return "default";
-}
-
-// --- Theme: Light (Ice Blue / Ocean) or Dark (Telegram dark + pink) ---
-
-const THEME_KEY = "lovechat.theme";
-type Theme = "light" | "dark";
-
-function loadTheme(): Theme {
-  try {
-    const raw = localStorage.getItem(THEME_KEY);
-    if (raw === "light" || raw === "dark") return raw;
-  } catch {
-    // fall through to the default
-  }
-  // Light is the default look (the dark theme is still available in
-  // Settings for anyone who wants it).
-  return "light";
 }
 
 // --- Recently used emojis for the picker (localStorage, max 12) ---
@@ -329,8 +292,6 @@ export default function Home() {
   });
   // Chat wallpaper (per phone, localStorage).
   const [wallpaper, setWallpaper] = useState("default");
-  // Theme: Light or Telegram-style Dark (per phone, localStorage).
-  const [theme, setTheme] = useState<Theme>("light");
   // Recently used emojis for the picker.
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
   // Profile photos (both phones, data URLs) — fetched once on load.
@@ -411,7 +372,6 @@ export default function Home() {
   useEffect(() => {
     setNames(loadNames());
     setWallpaper(loadWallpaper());
-    setTheme(loadTheme());
     setRecentEmojis(loadRecentEmojis());
     const saved = localStorage.getItem(IDENTITY_KEY);
     if (saved === "kaung" || saved === "love") setIdentity(saved);
@@ -430,12 +390,6 @@ export default function Home() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(""), 1500);
   }
-
-  // Apply the theme to <html> so every theme colour swaps at once
-  // (all utilities read the theme variables).
-  useEffect(() => {
-    document.documentElement.classList.toggle("theme-dark", theme === "dark");
-  }, [theme]);
 
   // Keep a ref mirror of the messages for the poll, whose callback
   // must not close over stale state.
@@ -676,7 +630,7 @@ export default function Home() {
                 <div
                   className={`relative max-w-[78%] rounded-2xl px-3.5 py-2 shadow-sm select-none ${
                     own
-                      ? "rounded-br-md bg-bubble-own text-white"
+                      ? "rounded-br-md bg-ocean text-white"
                       : "rounded-bl-md bg-card text-ink"
                   }`}
                 >
@@ -684,7 +638,7 @@ export default function Home() {
                   <span
                     aria-hidden
                     className={`absolute bottom-0 h-3 w-3 rotate-45 ${
-                      own ? "-right-1 bg-bubble-own" : "-left-1 bg-card"
+                      own ? "-right-1 bg-ocean" : "-left-1 bg-card"
                     }`}
                   />
                   {m.reply_to && (
@@ -707,14 +661,14 @@ export default function Home() {
                     >
                       <span
                         className={`block text-xs font-bold ${
-                          own ? "text-own-soft" : "text-ocean"
+                          own ? "text-blue-100" : "text-ocean"
                         }`}
                       >
                         {displayName(m.reply_to.sender, names)}
                       </span>
                       <span
                         className={`block truncate text-xs ${
-                          own ? "text-own-soft" : "text-ink-soft"
+                          own ? "text-blue-100/90" : "text-ink-soft"
                         }`}
                       >
                         {m.reply_to.body}
@@ -777,7 +731,7 @@ export default function Home() {
                         <span
                           id={`voice-time-${m.id}`}
                           className={`shrink-0 text-[11px] ${
-                            own ? "text-own-soft" : "text-ink-soft"
+                            own ? "text-blue-200" : "text-ink-soft"
                           }`}
                         >
                           {formatVoiceTime(m.audio_duration ?? 0)}
@@ -785,7 +739,7 @@ export default function Home() {
                       </div>
                       <p
                         className={`mt-1 text-right text-[11px] ${
-                          own ? "text-own-soft" : "text-ink-soft"
+                          own ? "text-blue-200" : "text-ink-soft"
                         }`}
                       >
                         {formatTime(m.created_at)}
@@ -827,7 +781,7 @@ export default function Home() {
                       )}
                       <p
                         className={`mt-1 text-right text-[11px] ${
-                          own ? "text-own-soft" : "text-ink-soft"
+                          own ? "text-blue-200" : "text-ink-soft"
                         }`}
                       >
                         {formatTime(m.created_at)}
@@ -845,7 +799,7 @@ export default function Home() {
                           of the last line, like Telegram. */}
                       <span
                         className={`float-right mt-1 ml-2 text-[11px] leading-none ${
-                          own ? "text-own-soft" : "text-ink-soft"
+                          own ? "text-blue-200" : "text-ink-soft"
                         }`}
                       >
                         {formatTime(m.created_at)}
@@ -1833,10 +1787,8 @@ export default function Home() {
       className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* Header — Telegram-style: full-width bar at the very top,
-          edge to edge (no side margins, so nothing sticks out), with a
-          shadow so it floats above the chat. */}
-      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-md">
+      {/* Header */}
+      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-sm">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
           {otherPhoto ? (
             <img
@@ -1874,22 +1826,6 @@ export default function Home() {
                   ? `Chatting with ${displayName(other, names)}`
                   : "Offline — reconnecting…")}
           </p>
-          {/* Live Together counter, inside the header (not a bar under
-              it — under the nav bar is only the chat background).
-              Tap it to change the date in Settings. */}
-          {togetherSince && (
-            <button
-              type="button"
-              onClick={() => {
-                setDraftNames({ ...names });
-                setShowSettings(true);
-              }}
-              className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-ocean"
-            >
-              <Heart className="h-3 w-3 fill-current" /> Together{" "}
-              {formatTogether(togetherSince, nowTick)}
-            </button>
-          )}
         </div>
         <button
           onClick={() => {
@@ -1903,19 +1839,28 @@ export default function Home() {
         </button>
       </header>
 
-      {/* Messages (right under the header — only the chat
-          background shows between the nav bar and the messages). */}
+      {/* Live Together counter (pinned-style bar under the header).
+          Tap it to change the date in Settings. */}
+      {togetherSince && (
+        <button
+          type="button"
+          onClick={() => {
+            setDraftNames({ ...names });
+            setShowSettings(true);
+          }}
+          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
+        >
+          <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
+          {formatTogether(togetherSince, nowTick)}
+        </button>
+      )}
+
+      {/* Messages */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={listRef}
           className="chat-bg flex-1 overflow-y-auto px-4 py-4"
-          style={
-            wallpaper === "default"
-              ? undefined
-              : theme === "dark"
-                ? WALLPAPERS[wallpaper]?.darkStyle
-                : WALLPAPERS[wallpaper]?.style
-          }
+          style={wallpaper === "default" ? undefined : WALLPAPERS[wallpaper]?.style}
           onClick={() => {
             if (showSettings) setShowSettings(false);
             if (showEmoji) setShowEmoji(false);
@@ -2011,9 +1956,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Composer — Telegram-style floating rounded bar, edges aligned
-          with the message column (mx-4 = the list's px-4). */}
-      <div className="mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-3xl bg-card px-3 py-2 shadow-lg">
+      {/* Composer */}
+      <div className="border-t border-line bg-card px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {editing && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">
@@ -2422,36 +2366,6 @@ export default function Home() {
                 onChange={(e) => void onPhotoFile(e)}
               />
             </div>
-            {/* Theme: Light or Telegram-style Dark */}
-            <p className="mt-5 text-sm font-semibold text-ink-soft">Theme</p>
-            <div className="mt-2 flex gap-2">
-              {(["light", "dark"] as Theme[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setTheme(t);
-                    try {
-                      localStorage.setItem(THEME_KEY, t);
-                    } catch {
-                      // Storage unavailable — the choice just won't persist.
-                    }
-                  }}
-                  className={`flex flex-1 items-center justify-center rounded-xl px-3 py-3 text-sm font-bold ${
-                    theme === t
-                      ? "bg-ocean text-white"
-                      : "bg-ice-deep text-ocean"
-                  }`}
-                >
-                  {t === "light" ? (
-                    <Sun className="mr-1.5 h-4 w-4" />
-                  ) : (
-                    <Moon className="mr-1.5 h-4 w-4" />
-                  )}
-                  {t === "light" ? "Light" : "Dark"}
-                </button>
-              ))}
-            </div>
             {/* Chat wallpaper (per phone) */}
             <p className="mt-5 text-sm font-semibold text-ink-soft">
               Chat wallpaper
@@ -2472,13 +2386,7 @@ export default function Home() {
                   className={`flex h-10 items-center justify-center rounded-xl border-2 text-xs font-bold ${
                     wallpaper === id ? "border-ocean" : "border-transparent"
                   } ${id === "default" ? "chat-bg" : ""}`}
-                  style={
-                    id === "default"
-                      ? undefined
-                      : theme === "dark"
-                        ? w.darkStyle
-                        : w.style
-                  }
+                  style={id === "default" ? undefined : w.style}
                   aria-label={w.label}
                   title={w.label}
                 >
