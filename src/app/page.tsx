@@ -676,7 +676,7 @@ export default function Home() {
                 <div
                   className={`relative max-w-[78%] rounded-2xl px-3.5 py-2 shadow-sm select-none ${
                     own
-                      ? "rounded-br-md bg-ocean text-white"
+                      ? "rounded-br-md bg-bubble-own text-white"
                       : "rounded-bl-md bg-card text-ink"
                   }`}
                 >
@@ -684,7 +684,7 @@ export default function Home() {
                   <span
                     aria-hidden
                     className={`absolute bottom-0 h-3 w-3 rotate-45 ${
-                      own ? "-right-1 bg-ocean" : "-left-1 bg-card"
+                      own ? "-right-1 bg-bubble-own" : "-left-1 bg-card"
                     }`}
                   />
                   {m.reply_to && (
@@ -1833,8 +1833,9 @@ export default function Home() {
       className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* Header — Telegram-style floating rounded bar */}
-      <header className="mx-3 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
+      {/* Header — Telegram-style floating rounded bar, edges aligned
+          with the message column (mx-4 = the list's px-4). */}
+      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-xl">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
           {otherPhoto ? (
             <img
@@ -1894,7 +1895,7 @@ export default function Home() {
             setDraftNames({ ...names });
             setShowSettings(true);
           }}
-          className="mx-3 mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-card px-4 py-1.5 text-xs font-semibold text-ocean shadow-md"
+          className="mx-4 mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-card px-4 py-1.5 text-xs font-semibold text-ocean shadow-md"
         >
           <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
           {formatTogether(togetherSince, nowTick)}
@@ -2008,8 +2009,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* Composer — Telegram-style floating rounded bar */}
-      <div className="mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-3xl bg-card px-3 py-2 shadow-lg">
+      {/* Composer — Telegram-style floating rounded bar, edges aligned
+          with the message column (mx-4 = the list's px-4). */}
+      <div className="mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-3xl bg-card px-3 py-2 shadow-lg">
         {editing && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">

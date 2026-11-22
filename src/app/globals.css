@@ -10,12 +10,15 @@
   --color-ocean-deep: #0f3559;
   --color-ocean-light: #6ea8d8;
   --color-card: #ffffff;
-  /* Soft text on your own bubbles (light blue on blue, light pink on
-     pink in dark mode). */
+  /* Your own bubbles (same as ocean in light mode, Telegram's dark
+     bubble blue #2b5278 in dark mode). */
+  --color-bubble-own: #174a7c;
+  /* Soft text on your own bubbles (light blue on blue in both
+     themes). */
   --color-own-soft: #bfdbfe;
 }
 
-/* Telegram-style dark theme (the screenshot: dark + pink accent).
+/* Telegram-style dark theme (normal dark-mode blues, no pink).
    Toggling `theme-dark` on <html> swaps every theme colour at once,
    because all utilities read these variables. */
 html.theme-dark {
@@ -24,11 +27,12 @@ html.theme-dark {
   --color-ink: #ffffff;
   --color-ink-soft: #7f91a4;
   --color-line: #242f3d;
-  --color-ocean: #e91e63;
-  --color-ocean-deep: #c2185b;
-  --color-ocean-light: #f48fb1;
+  --color-ocean: #5288c1;
+  --color-ocean-deep: #3a6ea5;
+  --color-ocean-light: #64a3dc;
   --color-card: #17212b;
-  --color-own-soft: #fbcfe8;
+  --color-bubble-own: #2b5278;
+  --color-own-soft: #b3d4fc;
 }
 
 html.theme-dark body {
