@@ -25,8 +25,20 @@ function firebaseConfig(): {
 } | null {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  // Vercel stores the pasted key with literal \n sequences.
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  // The key is pasted by hand into Vercel, so be forgiving about its
+  // shape: it may carry surrounding quotes (copied from the JSON),
+  // literal \n sequences, or real newlines. Normalise all of those to
+  // a clean PEM block; a key pasted without its BEGIN/END header lines
+  // still cannot work and is reported as a format problem at sign time.
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
+  if (
+    privateKey &&
+    ((privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+      (privateKey.startsWith("'") && privateKey.endsWith("'")))
+  ) {
+    privateKey = privateKey.slice(1, -1).trim();
+  }
+  privateKey = privateKey?.replace(/\\n/g, "\n");
   if (!projectId || !clientEmail || !privateKey) return null;
   return { projectId, clientEmail, privateKey };
 }
@@ -80,7 +92,17 @@ async function getAccessToken(): Promise<string | null> {
     };
     return data.access_token;
   } catch (e) {
-    console.error("FCM access token error", e);
+    // A decoder error here almost always means the pasted private key
+    // is not a clean PEM block (quotes around it, missing BEGIN/END
+    // lines, or truncated). Log only the shape, never the key itself.
+    const cfg = firebaseConfig();
+    const looksPem = !!cfg?.privateKey.includes("BEGIN PRIVATE KEY");
+    console.error(
+      "FCM access token error (key looks like PEM:",
+      looksPem,
+      ")",
+      e,
+    );
     return null;
   }
 }
