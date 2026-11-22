@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_DISPLAY_NAMES,
   displayName,
@@ -210,6 +210,85 @@ export default function Home() {
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
   }, [identity, fetchState]);
+
+  // Memoize the message list so typing in the composer — which
+  // re-renders this component on every keystroke — does not re-render
+  // all 200 bubbles. That full re-render per keystroke was the typing
+  // lag. The list only rebuilds when the messages, identity, names,
+  // or typing indicator actually change.
+  const renderedMessages = useMemo(() => {
+    if (messages.length === 0) return null;
+    return (
+      <div className="flex flex-col gap-1.5">
+        {messages.map((m, i) => {
+          const own = m.sender === me;
+          const prev = messages[i - 1];
+          const showDay =
+            !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
+          const showName =
+            !own && (!prev || prev.sender !== m.sender || showDay);
+          return (
+            <div key={m.id} className="fade-up">
+              {showDay && (
+                <div className="my-3 flex justify-center">
+                  <span className="rounded-full bg-ice-deep px-3 py-1 text-xs font-semibold text-ink-soft">
+                    {formatDay(m.created_at)}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`flex ${own ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
+                    own
+                      ? "rounded-br-md bg-ocean text-white"
+                      : "rounded-bl-md bg-card text-ink"
+                  }`}
+                >
+                  {showName && (
+                    <p className="mb-0.5 text-xs font-bold text-ocean-light">
+                      {displayName(m.sender, names)}
+                    </p>
+                  )}
+                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                    {m.body}
+                  </p>
+                  <p
+                    className={`mt-1 text-right text-[11px] ${
+                      own ? "text-blue-200" : "text-ink-soft"
+                    }`}
+                  >
+                    {formatTime(m.created_at)}
+                    {own && (
+                      <span className="ml-1">
+                        {m.read_at ? "✓✓" : "✓"}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {typingFrom && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl rounded-bl-md bg-card px-4 py-3 shadow-sm">
+              <span className="flex items-center gap-1.5">
+                <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
+                <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
+                <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
+                <span className="ml-1 text-xs text-ink-soft">
+                  {displayName(typingFrom, names)} is typing…
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+    );
+  }, [messages, me, names, typingFrom]);
 
   // Register this phone for full push notifications (APK only). FCM
   // gives the phone a device token; the server stores it so a message
@@ -490,74 +569,7 @@ export default function Home() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            {messages.map((m, i) => {
-              const own = m.sender === me;
-              const prev = messages[i - 1];
-              const showDay =
-                !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
-              const showName =
-                !own && (!prev || prev.sender !== m.sender || showDay);
-              return (
-                <div key={m.id} className="fade-up">
-                  {showDay && (
-                    <div className="my-3 flex justify-center">
-                      <span className="rounded-full bg-ice-deep px-3 py-1 text-xs font-semibold text-ink-soft">
-                        {formatDay(m.created_at)}
-                      </span>
-                    </div>
-                  )}
-                  <div
-                    className={`flex ${own ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                        own
-                          ? "rounded-br-md bg-ocean text-white"
-                          : "rounded-bl-md bg-card text-ink"
-                      }`}
-                    >
-                      {showName && (
-                        <p className="mb-0.5 text-xs font-bold text-ocean-light">
-                          {displayName(m.sender, names)}
-                        </p>
-                      )}
-                      <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
-                        {m.body}
-                      </p>
-                      <p
-                        className={`mt-1 text-right text-[11px] ${
-                          own ? "text-blue-200" : "text-ink-soft"
-                        }`}
-                      >
-                        {formatTime(m.created_at)}
-                        {own && (
-                          <span className="ml-1">
-                            {m.read_at ? "✓✓" : "✓"}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {typingFrom && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-md bg-card px-4 py-3 shadow-sm">
-                  <span className="flex items-center gap-1.5">
-                    <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
-                    <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
-                    <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
-                    <span className="ml-1 text-xs text-ink-soft">
-                      {displayName(typingFrom, names)} is typing…
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
+          renderedMessages
         )}
         {messages.length === 0 && <div ref={bottomRef} />}
       </div>
