@@ -23,11 +23,19 @@ function getSql() {
 
 export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   const sql = getSql();
+  // Return the NEWEST `limit` messages, oldest-first for display. The
+  // previous version took the OLDEST `limit` rows, so once the chat
+  // passed 200 messages new ones never loaded in the app (they still
+  // arrived via push, whose text comes straight from the POST).
   const rows = await sql`
     SELECT id, sender, body, kind, created_at, read_at
-    FROM chat_messages
+    FROM (
+      SELECT id, sender, body, kind, created_at, read_at
+      FROM chat_messages
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${limit}
+    ) AS recent
     ORDER BY created_at ASC, id ASC
-    LIMIT ${limit}
   `;
   return rows as unknown as ChatMessage[];
 }
