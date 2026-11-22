@@ -131,6 +131,10 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Cursor/selection in the composer, remembered across emoji-picker
+  // taps. The textarea loses focus (and selectionStart resets) when
+  // the picker opens, so insertEmoji reads this instead of the DOM.
+  const cursorRef = useRef<{ start: number; end: number } | null>(null);
   const lastTypingPing = useRef(0);
   // Long-press (react menu) + swipe-right (reply) gesture state.
   const longPressTimer = useRef<number | null>(null);
@@ -526,17 +530,44 @@ export default function Home() {
     }
   }
 
+  // Insert an emoji at the cursor WITHOUT focusing the textarea.
+  // Focusing it opens the system keyboard, which shrinks the visual
+  // viewport, resizes the whole chat and scrolls it to the bottom —
+  // on every single emoji tap the screen jumped like a reload, so
+  // picking 2–3 emojis in a row was hard. The picker stays open,
+  // the keyboard stays closed, and the layout does not move at all.
+  // The cursor is only re-placed when the textarea is already
+  // focused (keyboard already open), which causes no viewport change.
   function insertEmoji(emoji: string) {
     const el = inputRef.current;
-    const start = el?.selectionStart ?? input.length;
-    const end = el?.selectionEnd ?? input.length;
-    const next = input.slice(0, start) + emoji + input.slice(end);
+    const current = el?.value ?? input;
+    const start =
+      cursorRef.current?.start ?? el?.selectionStart ?? current.length;
+    const end = cursorRef.current?.end ?? el?.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + emoji + current.slice(end);
+    cursorRef.current = {
+      start: start + emoji.length,
+      end: start + emoji.length,
+    };
     setInput(next);
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + emoji.length, start + emoji.length);
-    });
+    if (el && document.activeElement === el) {
+      requestAnimationFrame(() => {
+        const pos = cursorRef.current?.start ?? next.length;
+        el.setSelectionRange(pos, pos);
+      });
+    }
     pingTyping();
+  }
+
+  // Keep the remembered cursor in sync whenever the user taps or
+  // types in the composer, so the next emoji lands where they left it.
+  function rememberCursor() {
+    const el = inputRef.current;
+    if (!el) return;
+    cursorRef.current = {
+      start: el.selectionStart ?? el.value.length,
+      end: el.selectionEnd ?? el.value.length,
+    };
   }
 
   function pingTyping() {
@@ -557,6 +588,7 @@ export default function Home() {
     ensureAudio();
     setSending(true);
     setInput("");
+    cursorRef.current = null;
     setShowEmoji(false);
     const replyingTo = replyTo;
     setReplyTo(null);
@@ -835,6 +867,7 @@ export default function Home() {
               {EMOJI_GROUPS.map((g, i) => (
                 <button
                   key={g.label}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setEmojiTab(i)}
                   className={`flex-1 rounded-xl py-1.5 text-lg ${
                     emojiTab === i ? "bg-ice-deep" : ""
@@ -849,6 +882,7 @@ export default function Home() {
               {EMOJI_GROUPS[emojiTab].emojis.map((e) => (
                 <button
                   key={e}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => insertEmoji(e)}
                   className="rounded-lg py-1 text-xl transition active:scale-125"
                 >
@@ -876,8 +910,11 @@ export default function Home() {
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
+              rememberCursor();
               pingTyping();
             }}
+            onSelect={rememberCursor}
+            onClick={rememberCursor}
             onFocus={() => {
               // Keyboard is opening — scroll the latest message up
               // above it (the visualViewport listener also fires and
