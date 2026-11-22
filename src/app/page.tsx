@@ -838,6 +838,17 @@ export default function Home() {
     setVoiceError("");
     setVoicePreview(null);
     try {
+      // Diagnose first: is a mic even visible to the WebView? If another
+      // app is holding the mic (call, voice recorder), enumerateDevices
+      // returns no audio inputs at all.
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter((d) => d.kind === "audioinput");
+      if (mics.length === 0) {
+        setVoiceError(
+          "No microphone found — another app may be using the mic. Close other apps (or restart the phone) and try again.",
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
@@ -881,9 +892,12 @@ export default function Home() {
         setRecSeconds(s);
         if (s >= MAX_VOICE_SECONDS) stopRecording();
       }, 500);
-    } catch {
+    } catch (e) {
+      // Show the REAL error (NotAllowedError, NotReadableError, …) instead
+      // of a generic "blocked" message, so a failure is diagnosable.
+      const err = e as Error | undefined;
       setVoiceError(
-        "Mic is blocked — allow microphone permission for this app, then tap the mic again.",
+        `Mic error (${err?.name ?? "unknown"}): ${err?.message ?? "could not start recording"}`,
       );
     }
   }
