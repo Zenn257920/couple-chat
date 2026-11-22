@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   Lock,
   Mic,
+  MoreVertical,
   PartyPopper,
   Pause,
   PawPrint,
@@ -20,7 +21,6 @@ import {
   Play,
   Reply,
   Send,
-  Settings,
   Shapes,
   Smartphone,
   Smile,
@@ -1787,8 +1787,8 @@ export default function Home() {
       className="mx-auto flex h-dvh w-full max-w-2xl flex-col bg-ice sm:border-x sm:border-line"
       style={viewportHeight ? { height: viewportHeight } : undefined}
     >
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-3 shadow-sm">
+      {/* Header — Telegram-style floating rounded bar */}
+      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
         <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
           {otherPhoto ? (
             <img
@@ -1826,34 +1826,37 @@ export default function Home() {
                   ? `Chatting with ${displayName(other, names)}`
                   : "Offline — reconnecting…")}
           </p>
+          {/* Live Together counter, inside the header (under the nav
+              bar is only the chat background). Tap it to change the
+              date in Settings. */}
+          {togetherSince && (
+            <button
+              type="button"
+              onClick={() => {
+                setDraftNames({ ...names });
+                setShowSettings(true);
+              }}
+              className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-ocean"
+            >
+              <Heart className="h-3 w-3 fill-current" /> Together{" "}
+              {formatTogether(togetherSince, nowTick)}
+            </button>
+          )}
         </div>
         <button
           onClick={() => {
             setDraftNames({ ...names });
             setShowSettings(true);
           }}
-          className="flex items-center rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ocean transition active:scale-95"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
           aria-label="Settings"
         >
-          <Settings className="mr-1.5 h-4 w-4" /> {displayName(me, names)}
+          <MoreVertical className="h-5 w-5" />
         </button>
       </header>
 
-      {/* Live Together counter (pinned-style bar under the header).
-          Tap it to change the date in Settings. */}
-      {togetherSince && (
-        <button
-          type="button"
-          onClick={() => {
-            setDraftNames({ ...names });
-            setShowSettings(true);
-          }}
-          className="flex items-center justify-center gap-1.5 border-b border-line bg-card px-4 py-1.5 text-xs font-semibold text-ocean"
-        >
-          <Heart className="h-3.5 w-3.5 fill-current" /> Together{" "}
-          {formatTogether(togetherSince, nowTick)}
-        </button>
-      )}
+      {/* Messages (right under the header — only the chat
+          background shows between the nav bar and the messages). */}
 
       {/* Messages */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1956,8 +1959,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Composer */}
-      <div className="border-t border-line bg-card px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {/* Composer — Telegram-style floating rounded bar */}
+      <div className="mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-3xl bg-card px-3 py-2 shadow-lg">
         {editing && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-amber-500 bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">
