@@ -39,6 +39,7 @@ jobs:
             npx cap add android
           fi
           npx cap sync android
+          if [ -f google-services.json ]; then cp google-services.json android/app/google-services.json; fi
 
       - name: Build debug APK
         run: ./android/gradlew -p android assembleDebug
