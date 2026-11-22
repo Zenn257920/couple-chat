@@ -16,6 +16,12 @@ export type ChatMessage = {
   reply_to_id: number | null;
   reply_to: { id: number; sender: Sender; body: string } | null;
   reactions: MessageReaction[];
+  // Voice messages only. audio_base64 is NEVER sent with the list —
+  // it is fetched lazily per message via /api/audio, so the 1.5s poll
+  // stays small.
+  audio_duration: number | null;
+  audio_mime: string | null;
+  has_audio: boolean;
 };
 
 export type TypingState = {
@@ -36,9 +42,11 @@ export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   // passed 200 messages new ones never loaded in the app (they still
   // arrived via push, whose text comes straight from the POST).
   const rows = await sql`
-    SELECT id, sender, body, kind, created_at, read_at, reply_to_id
+    SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
+      audio_duration, audio_mime, has_audio
     FROM (
-      SELECT id, sender, body, kind, created_at, read_at, reply_to_id
+      SELECT id, sender, body, kind, created_at, read_at, reply_to_id,
+        audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio
       FROM chat_messages
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit}
@@ -73,10 +81,17 @@ export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   return messages;
 }
 
+export type VoiceData = {
+  audioBase64: string;
+  audioDuration: number;
+  audioMime: string;
+};
+
 export async function insertMessage(
   sender: Sender,
   body: string,
   replyToId?: number | null,
+  voice?: VoiceData | null,
 ): Promise<ChatMessage> {
   const sql = getSql();
   // Only link the reply when the quoted message really exists.
@@ -85,10 +100,12 @@ export async function insertMessage(
     const target = await sql`SELECT id FROM chat_messages WHERE id = ${replyToId}`;
     if (target.length) replyTo = replyToId;
   }
+  const kind = voice ? "voice" : "text";
   const rows = await sql`
-    INSERT INTO chat_messages (sender, body, kind, reply_to_id)
-    VALUES (${sender}, ${body}, 'text', ${replyTo})
-    RETURNING id, sender, body, kind, created_at, read_at, reply_to_id
+    INSERT INTO chat_messages (sender, body, kind, reply_to_id, audio_base64, audio_duration, audio_mime)
+    VALUES (${sender}, ${body}, ${kind}, ${replyTo}, ${voice?.audioBase64 ?? null}, ${voice?.audioDuration ?? null}, ${voice?.audioMime ?? null})
+    RETURNING id, sender, body, kind, created_at, read_at, reply_to_id,
+      audio_duration, audio_mime, (audio_base64 IS NOT NULL) AS has_audio
   `;
   const message = rows[0] as unknown as ChatMessage;
   message.reactions = [];
@@ -98,6 +115,29 @@ export async function insertMessage(
     if (target.length) message.reply_to = target[0] as unknown as ChatMessage["reply_to"];
   }
   return message;
+}
+
+// Fetch one voice message's audio (lazy — never part of the list).
+export async function getAudio(
+  messageId: number,
+): Promise<{ audioBase64: string; audioMime: string; audioDuration: number } | null> {
+  const sql = getSql();
+  const rows = await sql`
+    SELECT audio_base64, audio_mime, audio_duration
+    FROM chat_messages
+    WHERE id = ${messageId} AND audio_base64 IS NOT NULL
+  `;
+  if (!rows.length) return null;
+  const r = rows[0] as unknown as {
+    audio_base64: string;
+    audio_mime: string;
+    audio_duration: number;
+  };
+  return {
+    audioBase64: r.audio_base64,
+    audioMime: r.audio_mime,
+    audioDuration: r.audio_duration,
+  };
 }
 
 // Toggle a reaction: same emoji again removes it, another emoji

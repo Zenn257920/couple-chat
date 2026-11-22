@@ -77,6 +77,12 @@ function formatTime(iso: string): string {
   });
 }
 
+// Voice message durations as m:ss.
+function formatVoiceTime(total: number): string {
+  const s = Math.max(0, Math.floor(total));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function formatDay(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
@@ -124,6 +130,19 @@ export default function Home() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   // Message the long-press react menu is open for.
   const [reactMenuFor, setReactMenuFor] = useState<ChatMessage | null>(null);
+  // Voice messages: tap the mic to record, tap stop, then send.
+  const [isRecording, setIsRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const [voicePreview, setVoicePreview] = useState<{
+    url: string;
+    blob: Blob;
+    seconds: number;
+    mime: string;
+  } | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [playingId, setPlayingId] = useState<number | null>(null);
+  const [loadingAudioId, setLoadingAudioId] = useState<number | null>(null);
   const [draftNames, setDraftNames] = useState<Names>({
     ...DEFAULT_DISPLAY_NAMES,
   });
@@ -141,6 +160,16 @@ export default function Home() {
   const pressStart = useRef<{ x: number; y: number } | null>(null);
   const longPressedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
+  // Voice recording / playback refs.
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<number | null>(null);
+  const recStartedAtRef = useRef(0);
+  const discardVoiceRef = useRef(false);
+  const audioCacheRef = useRef(new Map<number, string>());
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   // Last incoming message id we already alerted for, so a poll that
   // re-fetches the same messages doesn't ding again. The first load
   // just records the latest id (old messages must not ding).
@@ -347,23 +376,93 @@ export default function Home() {
                       {displayName(m.sender, names)}
                     </p>
                   )}
-                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
-                    {m.body}
-                    {/* Time + ticks ride inside the bubble at the end
-                        of the last line, like Telegram. */}
-                    <span
-                      className={`float-right mt-1 ml-2 text-[11px] leading-none ${
-                        own ? "text-blue-200" : "text-ink-soft"
-                      }`}
-                    >
-                      {formatTime(m.created_at)}
-                      {own && (
-                        <span className="ml-1">
-                          {m.read_at ? "✓✓" : "✓"}
+                  {m.kind === "voice" && m.has_audio ? (
+                    <div>
+                      <div className="flex items-center gap-2 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => void togglePlay(m)}
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base shadow-sm transition active:scale-95 ${
+                            own ? "bg-white/25 text-white" : "bg-ocean text-white"
+                          }`}
+                          aria-label={
+                            playingId === m.id
+                              ? "Pause voice message"
+                              : "Play voice message"
+                          }
+                        >
+                          {loadingAudioId === m.id
+                            ? "…"
+                            : playingId === m.id
+                              ? "⏸"
+                              : "▶"}
+                        </button>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div
+                            className="flex h-3.5 items-center gap-[2px]"
+                            aria-hidden
+                          >
+                            {Array.from({ length: 22 }).map((_, i) => (
+                              <span
+                                key={i}
+                                className={`w-[3px] shrink-0 rounded-full ${
+                                  own ? "bg-white/70" : "bg-ocean/60"
+                                }`}
+                                style={{ height: `${6 + ((i * 7) % 10)}px` }}
+                              />
+                            ))}
+                          </div>
+                          <div className="h-1 w-full overflow-hidden rounded-full bg-black/10">
+                            <div
+                              id={`voice-progress-${m.id}`}
+                              className={`h-full rounded-full ${
+                                own ? "bg-white" : "bg-ocean"
+                              }`}
+                              style={{ width: "0%" }}
+                            />
+                          </div>
+                        </div>
+                        <span
+                          id={`voice-time-${m.id}`}
+                          className={`shrink-0 text-[11px] ${
+                            own ? "text-blue-200" : "text-ink-soft"
+                          }`}
+                        >
+                          {formatVoiceTime(m.audio_duration ?? 0)}
                         </span>
-                      )}
-                    </span>
-                  </p>
+                      </div>
+                      <p
+                        className={`mt-1 text-right text-[11px] ${
+                          own ? "text-blue-200" : "text-ink-soft"
+                        }`}
+                      >
+                        {formatTime(m.created_at)}
+                        {own && (
+                          <span className="ml-1">
+                            {m.read_at ? "✓✓" : "✓"}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                      {m.body}
+                      {/* Time + ticks ride inside the bubble at the end
+                          of the last line, like Telegram. */}
+                      <span
+                        className={`float-right mt-1 ml-2 text-[11px] leading-none ${
+                          own ? "text-blue-200" : "text-ink-soft"
+                        }`}
+                      >
+                        {formatTime(m.created_at)}
+                        {own && (
+                          <span className="ml-1">
+                            {m.read_at ? "✓✓" : "✓"}
+                          </span>
+                        )}
+                      </span>
+                    </p>
+                  )}
                 </div>
               </div>
               {m.reactions.length > 0 && (
@@ -413,7 +512,7 @@ export default function Home() {
         <div ref={bottomRef} />
       </div>
     );
-  }, [messages, identity, names, typingFrom]);
+  }, [messages, identity, names, typingFrom, playingId, loadingAudioId]);
 
   // Register this phone for full push notifications (APK only). FCM
   // gives the phone a device token; the server stores it so a message
@@ -604,6 +703,9 @@ export default function Home() {
         ? { id: replyingTo.id, sender: replyingTo.sender, body: replyingTo.body }
         : null,
       reactions: [],
+      audio_duration: null,
+      audio_mime: null,
+      has_audio: false,
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -711,6 +813,252 @@ export default function Home() {
     document
       .getElementById(`msg-${id}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  // --- Voice messages ---
+
+  const MAX_VOICE_SECONDS = 120;
+
+  // Stop the mic stream and timer (also used as an unmount cleanup).
+  function stopVoiceCapture() {
+    if (recTimerRef.current) window.clearInterval(recTimerRef.current);
+    recTimerRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+  }
+
+  // Release the mic if this screen ever unmounts mid-recording.
+  useEffect(() => () => stopVoiceCapture(), []);
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceError("Voice recording isn't supported on this phone.");
+      return;
+    }
+    setVoiceError("");
+    setVoicePreview(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "";
+      const rec = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: 24000,
+      });
+      mediaChunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        stopVoiceCapture();
+        if (discardVoiceRef.current) {
+          discardVoiceRef.current = false;
+          return;
+        }
+        const blob = new Blob(mediaChunksRef.current, {
+          type: rec.mimeType || "audio/webm",
+        });
+        const seconds = Math.max(
+          1,
+          Math.round((Date.now() - recStartedAtRef.current) / 1000),
+        );
+        setVoicePreview({
+          url: URL.createObjectURL(blob),
+          blob,
+          seconds,
+          mime: blob.type || "audio/webm",
+        });
+      };
+      mediaRecorderRef.current = rec;
+      mediaStreamRef.current = stream;
+      recStartedAtRef.current = Date.now();
+      rec.start(250);
+      setRecSeconds(0);
+      setIsRecording(true);
+      recTimerRef.current = window.setInterval(() => {
+        const s = Math.floor((Date.now() - recStartedAtRef.current) / 1000);
+        setRecSeconds(s);
+        if (s >= MAX_VOICE_SECONDS) stopRecording();
+      }, 500);
+    } catch {
+      setVoiceError(
+        "Mic is blocked — allow microphone permission for this app, then tap the mic again.",
+      );
+    }
+  }
+
+  function stopRecording() {
+    if (recTimerRef.current) window.clearInterval(recTimerRef.current);
+    recTimerRef.current = null;
+    setIsRecording(false);
+    const rec = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  function cancelRecording() {
+    discardVoiceRef.current = true;
+    stopRecording();
+    setVoicePreview(null);
+    setRecSeconds(0);
+  }
+
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? "");
+      };
+      reader.onerror = () => reject(new Error("read failed"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function sendVoice() {
+    if (!voicePreview || !identity || sending) return;
+    ensureAudio();
+    setSending(true);
+    const preview = voicePreview;
+    setVoicePreview(null);
+    setPreviewPlaying(false);
+    const replyingTo = replyTo;
+    setReplyTo(null);
+    const optimistic: ChatMessage = {
+      id: -Date.now(),
+      sender: identity,
+      body: "🎤 Voice message",
+      kind: "voice",
+      created_at: new Date().toISOString(),
+      read_at: null,
+      reply_to_id: replyingTo?.id ?? null,
+      reply_to: replyingTo
+        ? { id: replyingTo.id, sender: replyingTo.sender, body: replyingTo.body }
+        : null,
+      reactions: [],
+      audio_duration: preview.seconds,
+      audio_mime: preview.mime,
+      has_audio: true,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    requestAnimationFrame(() => scrollToBottom());
+    try {
+      const base64 = await blobToBase64(preview.blob);
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: identity,
+          kind: "voice",
+          audioBase64: base64,
+          audioDuration: preview.seconds,
+          audioMime: preview.mime,
+          replyToId: replyingTo?.id ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error("send failed");
+      const data = (await res.json()) as { message: ChatMessage };
+      // Cache the local recording so the sender can play it instantly
+      // without re-downloading it.
+      audioCacheRef.current.set(data.message.id, preview.url);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === optimistic.id ? data.message : m)),
+      );
+      await fetchState();
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      setLoadError("Voice message didn't send — check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function togglePreviewPlay() {
+    if (!voicePreview) return;
+    const audio = previewAudioRef.current ?? new Audio();
+    previewAudioRef.current = audio;
+    if (previewPlaying) {
+      audio.pause();
+      setPreviewPlaying(false);
+      return;
+    }
+    audio.src = voicePreview.url;
+    audio.onended = () => setPreviewPlaying(false);
+    void audio.play().then(
+      () => setPreviewPlaying(true),
+      () => setVoiceError("Couldn't play this recording."),
+    );
+  }
+
+  // Update a voice bubble's progress bar + time label directly in the
+  // DOM: the list is memoized, so React state here would rebuild all
+  // 200 bubbles ~4 times a second while playing.
+  function updateVoiceProgress(m: ChatMessage, current: number, total: number) {
+    const bar = document.getElementById(`voice-progress-${m.id}`);
+    if (bar && total > 0) bar.style.width = `${Math.min(100, (current / total) * 100)}%`;
+    const label = document.getElementById(`voice-time-${m.id}`);
+    if (label) label.textContent = formatVoiceTime(current);
+  }
+
+  function resetVoiceProgress(m: ChatMessage) {
+    const bar = document.getElementById(`voice-progress-${m.id}`);
+    if (bar) bar.style.width = "0%";
+    const label = document.getElementById(`voice-time-${m.id}`);
+    if (label) label.textContent = formatVoiceTime(m.audio_duration ?? 0);
+  }
+
+  async function togglePlay(m: ChatMessage) {
+    if (!m.has_audio) return;
+    const audio = audioElRef.current ?? new Audio();
+    audioElRef.current = audio;
+    if (playingId === m.id) {
+      audio.pause();
+      setPlayingId(null);
+      return;
+    }
+    audio.pause();
+    if (playingId !== null) {
+      const prev = messages.find((x) => x.id === playingId);
+      if (prev) resetVoiceProgress(prev);
+    }
+    let url = audioCacheRef.current.get(m.id);
+    if (!url) {
+      setLoadingAudioId(m.id);
+      try {
+        const res = await fetch(`/api/audio?id=${m.id}`);
+        if (!res.ok) throw new Error("load failed");
+        const data = (await res.json()) as {
+          audioBase64: string;
+          audioMime: string;
+          audioDuration: number;
+        };
+        const bytes = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: data.audioMime || "audio/webm" });
+        url = URL.createObjectURL(blob);
+        audioCacheRef.current.set(m.id, url);
+      } catch {
+        setLoadingAudioId(null);
+        setLoadError("Couldn't load this voice message — try again.");
+        return;
+      } finally {
+        setLoadingAudioId(null);
+      }
+    }
+    audio.src = url;
+    audio.onended = () => {
+      setPlayingId(null);
+      resetVoiceProgress(m);
+    };
+    audio.ontimeupdate = () => {
+      if (audio.duration) updateVoiceProgress(m, audio.currentTime, audio.duration);
+    };
+    try {
+      await audio.play();
+      setPlayingId(m.id);
+    } catch {
+      setLoadError("Couldn't play this voice message.");
+    }
   }
 
   if (!ready) {
@@ -892,58 +1240,131 @@ export default function Home() {
             </div>
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <button
-            onClick={() => {
-              ensureAudio();
-              setShowEmoji((v) => !v);
-            }}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl shadow-md transition active:scale-95 ${
-              showEmoji ? "bg-ocean text-white" : "bg-ice-deep text-ocean"
-            }`}
-            aria-label="Emoji"
-          >
-            😊
-          </button>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              rememberCursor();
-              pingTyping();
-            }}
-            onSelect={rememberCursor}
-            onClick={rememberCursor}
-            onFocus={() => {
-              // Keyboard is opening — scroll the latest message up
-              // above it (the visualViewport listener also fires and
-              // re-scrolls once the keyboard finishes opening).
-              requestAnimationFrame(() => scrollToBottom(false));
-              window.setTimeout(() => scrollToBottom(false), 350);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void sendMessage();
-              }
-            }}
-            rows={1}
-            placeholder={`Message ${displayName(other, names)}…`}
-            maxLength={2000}
-            className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-ice px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-soft focus:border-ocean"
-          />
-          <button
-            onClick={() => void sendMessage()}
-            disabled={!input.trim() || sending}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
-            aria-label="Send"
-          >
-            ➤
-          </button>
-        </div>
+        {isRecording ? (
+          <div className="flex items-center gap-2">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-md">
+              <span className="rec-dot h-3 w-3 rounded-full bg-white" />
+            </span>
+            <span className="flex-1 text-sm font-bold text-ink">
+              Recording… {formatVoiceTime(recSeconds)} /{" "}
+              {formatVoiceTime(MAX_VOICE_SECONDS)}
+            </span>
+            <button
+              type="button"
+              onClick={cancelRecording}
+              className="rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ink-soft transition active:scale-95"
+            >
+              ✕ Cancel
+            </button>
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-500 text-lg text-white shadow-md transition active:scale-95"
+              aria-label="Stop recording"
+            >
+              ■
+            </button>
+          </div>
+        ) : voicePreview ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePreviewPlay}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95"
+              aria-label={previewPlaying ? "Pause preview" : "Play preview"}
+            >
+              {previewPlaying ? "⏸" : "▶"}
+            </button>
+            <span className="flex-1 text-sm font-semibold text-ink">
+              Voice message • {formatVoiceTime(voicePreview.seconds)}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setVoicePreview(null);
+                setPreviewPlaying(false);
+              }}
+              className="rounded-full bg-ice-deep px-3 py-2 text-sm font-semibold text-ink-soft transition active:scale-95"
+            >
+              ✕ Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendVoice()}
+              disabled={sending}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
+              aria-label="Send voice message"
+            >
+              ➤
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => {
+                ensureAudio();
+                setShowEmoji((v) => !v);
+              }}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl shadow-md transition active:scale-95 ${
+                showEmoji ? "bg-ocean text-white" : "bg-ice-deep text-ocean"
+              }`}
+              aria-label="Emoji"
+            >
+              😊
+            </button>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                rememberCursor();
+                pingTyping();
+              }}
+              onSelect={rememberCursor}
+              onClick={rememberCursor}
+              onFocus={() => {
+                // Keyboard is opening — scroll the latest message up
+                // above it (the visualViewport listener also fires and
+                // re-scrolls once the keyboard finishes opening).
+                requestAnimationFrame(() => scrollToBottom(false));
+                window.setTimeout(() => scrollToBottom(false), 350);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              rows={1}
+              placeholder={`Message ${displayName(other, names)}…`}
+              maxLength={2000}
+              className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-ice px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-soft focus:border-ocean"
+            />
+            {input.trim() ? (
+              <button
+                onClick={() => void sendMessage()}
+                disabled={sending}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95 disabled:opacity-40"
+                aria-label="Send"
+              >
+                ➤
+              </button>
+            ) : (
+              <button
+                onClick={() => void startRecording()}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-lg text-white shadow-md transition active:scale-95"
+                aria-label="Record voice message"
+              >
+                🎤
+              </button>
+            )}
+          </div>
+        )}
+        {voiceError && (
+          <p className="mt-1.5 text-center text-xs text-red-600">{voiceError}</p>
+        )}
         <p className="mt-1.5 text-center text-[11px] text-ink-soft">
-          Just the two of you — text messages only (v1)
+          Just the two of you — text & voice
         </p>
       </div>
 

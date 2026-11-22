@@ -25,28 +25,62 @@ export async function POST(req: Request) {
       sender?: unknown;
       body?: unknown;
       replyToId?: unknown;
+      kind?: unknown;
+      audioBase64?: unknown;
+      audioDuration?: unknown;
+      audioMime?: unknown;
     };
     if (data.sender !== "kaung" && data.sender !== "love") {
       return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
     }
     const sender = data.sender as Sender;
-    if (typeof data.body !== "string") {
-      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-    }
-    const body = data.body.trim();
-    if (!body) {
-      return NextResponse.json({ error: "Message is empty" }, { status: 400 });
-    }
-    if (body.length > 2000) {
-      return NextResponse.json(
-        { error: "Message is too long (max 2000 characters)" },
-        { status: 400 },
-      );
+    // Voice messages carry audio instead of text. The stored body is
+    // just the label (used for the push preview); the audio itself is
+    // fetched lazily via /api/audio and never rides the message list.
+    // ~1 min of Opus is ~200 KB base64; cap at 2,000,000 chars
+    // (~6 min) so one upload can never blow up the database.
+    let body: string;
+    let voice: { audioBase64: string; audioDuration: number; audioMime: string } | null = null;
+    if (data.kind === "voice") {
+      if (
+        typeof data.audioBase64 !== "string" ||
+        data.audioBase64.length < 100 ||
+        data.audioBase64.length > 2_000_000 ||
+        typeof data.audioDuration !== "number" ||
+        !Number.isFinite(data.audioDuration) ||
+        data.audioDuration < 1 ||
+        data.audioDuration > 180 ||
+        typeof data.audioMime !== "string" ||
+        !data.audioMime.startsWith("audio/")
+      ) {
+        return NextResponse.json({ error: "Invalid voice data" }, { status: 400 });
+      }
+      body = "🎤 Voice message";
+      voice = {
+        audioBase64: data.audioBase64,
+        audioDuration: Math.round(data.audioDuration),
+        audioMime: data.audioMime,
+      };
+    } else {
+      if (typeof data.body !== "string") {
+        return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+      }
+      body = data.body.trim();
+      if (!body) {
+        return NextResponse.json({ error: "Message is empty" }, { status: 400 });
+      }
+      if (body.length > 2000) {
+        return NextResponse.json(
+          { error: "Message is too long (max 2000 characters)" },
+          { status: 400 },
+        );
+      }
     }
     const message = await insertMessage(
       sender,
       body,
       typeof data.replyToId === "number" ? data.replyToId : null,
+      voice,
     );
     // Notify the other phone with a system notification (FCM). Fire and
     // forget: push must never delay or break the message response.
