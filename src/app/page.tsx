@@ -7,6 +7,7 @@ import {
   otherSender,
   type Sender,
 } from "@/lib/names";
+import { REACTION_EMOJIS } from "@/lib/reactions";
 import type { ChatMessage } from "@/lib/db";
 
 const IDENTITY_KEY = "lovechat.identity";
@@ -119,6 +120,10 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [emojiTab, setEmojiTab] = useState(0);
+  // Message the user is replying to (Telegram-style quote).
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  // Message the long-press react menu is open for.
+  const [reactMenuFor, setReactMenuFor] = useState<ChatMessage | null>(null);
   const [draftNames, setDraftNames] = useState<Names>({
     ...DEFAULT_DISPLAY_NAMES,
   });
@@ -127,6 +132,11 @@ export default function Home() {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPing = useRef(0);
+  // Long-press (react menu) + swipe-right (reply) gesture state.
+  const longPressTimer = useRef<number | null>(null);
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
+  const longPressedRef = useRef(false);
+  const touchStartX = useRef<number | null>(null);
   // Last incoming message id we already alerted for, so a poll that
   // re-fetches the same messages doesn't ding again. The first load
   // just records the latest id (old messages must not ding).
@@ -165,7 +175,13 @@ export default function Home() {
       setMessages((prev) => {
         const changed =
           prev.length !== data.messages.length ||
-          prev.some((m, i) => m.id !== data.messages[i]?.id);
+          prev.some(
+            (m, i) =>
+              m.id !== data.messages[i]?.id ||
+              m.reply_to_id !== data.messages[i]?.reply_to_id ||
+              JSON.stringify(m.reactions) !==
+                JSON.stringify(data.messages[i]?.reactions),
+          );
         if (!changed) return prev;
         // Auto-scroll if we were already near the bottom.
         const el = listRef.current;
@@ -255,7 +271,7 @@ export default function Home() {
           const showName =
             !own && (!prev || prev.sender !== m.sender || showDay);
           return (
-            <div key={m.id} className="fade-up">
+            <div key={m.id} id={`msg-${m.id}`} className="fade-up">
               {showDay && (
                 <div className="my-3 flex justify-center">
                   <span className="rounded-full bg-ice-deep px-3 py-1 text-xs font-semibold text-ink-soft">
@@ -265,14 +281,63 @@ export default function Home() {
               )}
               <div
                 className={`flex ${own ? "justify-end" : "justify-start"}`}
+                onPointerDown={(e) => onMessagePressStart(e, m)}
+                onPointerMove={onMessagePressMove}
+                onPointerUp={onMessagePressEnd}
+                onPointerLeave={onMessagePressEnd}
+                onPointerCancel={onMessagePressEnd}
+                onTouchStart={onMessageTouchStart}
+                onTouchEnd={(e) => onMessageTouchEnd(e, m)}
+                onContextMenu={(e) => e.preventDefault()}
               >
                 <div
-                  className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
+                  className={`relative max-w-[78%] rounded-2xl px-3.5 py-2 shadow-sm select-none ${
                     own
                       ? "rounded-br-md bg-ocean text-white"
                       : "rounded-bl-md bg-card text-ink"
                   }`}
                 >
+                  {/* Telegram-style tail */}
+                  <span
+                    aria-hidden
+                    className={`absolute bottom-0 h-3 w-3 rotate-45 ${
+                      own ? "-right-1 bg-ocean" : "-left-1 bg-card"
+                    }`}
+                  />
+                  {m.reply_to && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // A tap right after a long-press opened the menu
+                        // is the menu tap, not a jump request.
+                        if (longPressedRef.current) {
+                          longPressedRef.current = false;
+                          return;
+                        }
+                        jumpToMessage(m.reply_to!.id);
+                      }}
+                      className={`mb-1 block w-full rounded-lg border-l-[3px] px-2 py-1 text-left ${
+                        own
+                          ? "border-blue-200 bg-white/15"
+                          : "border-ocean bg-ice"
+                      }`}
+                    >
+                      <span
+                        className={`block text-xs font-bold ${
+                          own ? "text-blue-100" : "text-ocean"
+                        }`}
+                      >
+                        {displayName(m.reply_to.sender, names)}
+                      </span>
+                      <span
+                        className={`block truncate text-xs ${
+                          own ? "text-blue-100/90" : "text-ink-soft"
+                        }`}
+                      >
+                        {m.reply_to.body}
+                      </span>
+                    </button>
+                  )}
                   {showName && (
                     <p className="mb-0.5 text-xs font-bold text-ocean-light">
                       {displayName(m.sender, names)}
@@ -280,21 +345,50 @@ export default function Home() {
                   )}
                   <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                     {m.body}
-                  </p>
-                  <p
-                    className={`mt-1 text-right text-[11px] ${
-                      own ? "text-blue-200" : "text-ink-soft"
-                    }`}
-                  >
-                    {formatTime(m.created_at)}
-                    {own && (
-                      <span className="ml-1">
-                        {m.read_at ? "✓✓" : "✓"}
-                      </span>
-                    )}
+                    {/* Time + ticks ride inside the bubble at the end
+                        of the last line, like Telegram. */}
+                    <span
+                      className={`float-right mt-1 ml-2 text-[11px] leading-none ${
+                        own ? "text-blue-200" : "text-ink-soft"
+                      }`}
+                    >
+                      {formatTime(m.created_at)}
+                      {own && (
+                        <span className="ml-1">
+                          {m.read_at ? "✓✓" : "✓"}
+                        </span>
+                      )}
+                    </span>
                   </p>
                 </div>
               </div>
+              {m.reactions.length > 0 && (
+                <div
+                  className={`mt-1 flex flex-wrap gap-1 ${
+                    own ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  {m.reactions.map((g) => {
+                    const mine =
+                      !!identity && g.senders.includes(identity);
+                    return (
+                      <button
+                        key={g.emoji}
+                        type="button"
+                        onClick={() => void reactTo(m.id, g.emoji)}
+                        className={`rounded-full border px-2 py-0.5 text-xs shadow-sm transition active:scale-95 ${
+                          mine
+                            ? "border-ocean bg-ocean text-white"
+                            : "border-line bg-card text-ink"
+                        }`}
+                      >
+                        {g.emoji}
+                        {g.senders.length > 1 ? ` ${g.senders.length}` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -464,6 +558,8 @@ export default function Home() {
     setSending(true);
     setInput("");
     setShowEmoji(false);
+    const replyingTo = replyTo;
+    setReplyTo(null);
     const optimistic: ChatMessage = {
       id: -Date.now(),
       sender: identity,
@@ -471,6 +567,11 @@ export default function Home() {
       kind: "text",
       created_at: new Date().toISOString(),
       read_at: null,
+      reply_to_id: replyingTo?.id ?? null,
+      reply_to: replyingTo
+        ? { id: replyingTo.id, sender: replyingTo.sender, body: replyingTo.body }
+        : null,
+      reactions: [],
     };
     setMessages((prev) => [...prev, optimistic]);
     requestAnimationFrame(() => scrollToBottom());
@@ -478,7 +579,11 @@ export default function Home() {
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: identity, body }),
+        body: JSON.stringify({
+          sender: identity,
+          body,
+          replyToId: replyingTo?.id ?? null,
+        }),
       });
       if (!res.ok) throw new Error("send failed");
       const data = (await res.json()) as { message: ChatMessage };
@@ -489,10 +594,91 @@ export default function Home() {
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setInput(body);
+      setReplyTo(replyingTo);
       setLoadError("Message didn't send — check your connection and try again.");
     } finally {
       setSending(false);
     }
+  }
+
+  // --- Telegram-style reactions & replies ---
+
+  // Toggle my reaction to an emoji on a message. Optimistic: update
+  // locally right away; the poll corrects it within 1.5s anyway.
+  async function reactTo(messageId: number, emoji: string) {
+    if (!identity) return;
+    const me = identity;
+    setReactMenuFor(null);
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const mine = m.reactions.find((g) => g.senders.includes(me));
+        let reactions = m.reactions
+          .map((g) => ({ ...g, senders: g.senders.filter((s) => s !== me) }))
+          .filter((g) => g.senders.length > 0);
+        if (!mine || mine.emoji !== emoji) {
+          const group = reactions.find((g) => g.emoji === emoji);
+          if (group) group.senders.push(me);
+          else reactions = [...reactions, { emoji, senders: [me] }];
+        }
+        return { ...m, reactions };
+      }),
+    );
+    try {
+      await fetch("/api/reactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: me, messageId, emoji }),
+      });
+    } catch {
+      // Poll will correct the optimistic state.
+    }
+    void fetchState();
+  }
+
+  // Long-press (500ms, no move) opens the react menu for a message.
+  function onMessagePressStart(e: React.PointerEvent, m: ChatMessage) {
+    pressStart.current = { x: e.clientX, y: e.clientY };
+    longPressedRef.current = false;
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      setReactMenuFor(m);
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 500);
+  }
+  function onMessagePressMove(e: React.PointerEvent) {
+    const start = pressStart.current;
+    if (!start) return;
+    if (Math.abs(e.clientX - start.x) > 10 || Math.abs(e.clientY - start.y) > 10) {
+      if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+      pressStart.current = null;
+    }
+  }
+  function onMessagePressEnd() {
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    pressStart.current = null;
+  }
+
+  // Swipe right on a message to reply to it (Telegram gesture).
+  function onMessageTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+  function onMessageTouchEnd(e: React.TouchEvent, m: ChatMessage) {
+    const startX = touchStartX.current;
+    touchStartX.current = null;
+    if (startX === null) return;
+    if (e.changedTouches[0].clientX - startX > 60) {
+      setReplyTo(m);
+      inputRef.current?.focus();
+    }
+  }
+
+  // Jump to the quoted message when its quote is tapped.
+  function jumpToMessage(id: number) {
+    document
+      .getElementById(`msg-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   if (!ready) {
@@ -562,10 +748,16 @@ export default function Home() {
           <h1 className="truncate text-base font-bold text-ink">
             {displayName("kaung", names)} &amp; {displayName("love", names)}
           </h1>
-          <p className="truncate text-xs text-ink-soft">
-            {connected
-              ? `Chatting with ${displayName(other, names)}`
-              : "Offline — reconnecting…"}
+          <p
+            className={`truncate text-xs ${
+              typingFrom ? "text-ocean" : "text-ink-soft"
+            }`}
+          >
+            {typingFrom
+              ? `${displayName(typingFrom, names)} is typing…`
+              : connected
+                ? `Chatting with ${displayName(other, names)}`
+                : "Offline — reconnecting…"}
           </p>
         </div>
         <button
@@ -583,7 +775,7 @@ export default function Home() {
       {/* Messages */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="chat-bg flex-1 overflow-y-auto px-4 py-4"
         onClick={() => {
           if (showSettings) setShowSettings(false);
           if (showEmoji) setShowEmoji(false);
@@ -619,6 +811,24 @@ export default function Home() {
 
       {/* Composer */}
       <div className="border-t border-line bg-card px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {replyTo && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-ocean bg-ice px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-ocean">
+                Replying to {displayName(replyTo.sender, names)}
+              </p>
+              <p className="truncate text-xs text-ink-soft">{replyTo.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyTo(null)}
+              className="shrink-0 rounded-full px-2 py-1 text-ink-soft"
+              aria-label="Cancel reply"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {showEmoji && (
           <div className="mb-2 rounded-2xl border border-line bg-ice p-2 shadow-sm">
             <div className="flex gap-1">
@@ -699,6 +909,54 @@ export default function Home() {
           Just the two of you — text messages only (v1)
         </p>
       </div>
+
+      {/* Long-press react menu (Telegram-style) */}
+      {reactMenuFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setReactMenuFor(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-card p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-3 truncate text-center text-xs text-ink-soft">
+              {displayName(reactMenuFor.sender, names)}: {reactMenuFor.body}
+            </p>
+            <div className="flex justify-around">
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => void reactTo(reactMenuFor.id, emoji)}
+                  className="rounded-full px-2 py-1 text-3xl transition active:scale-125"
+                  aria-label={`React ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setReplyTo(reactMenuFor);
+                setReactMenuFor(null);
+                inputRef.current?.focus();
+              }}
+              className="mt-3 w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ocean"
+            >
+              ↩ Reply to this message
+            </button>
+            <button
+              type="button"
+              onClick={() => setReactMenuFor(null)}
+              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-ink-soft"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Settings sheet */}
       {showSettings && (

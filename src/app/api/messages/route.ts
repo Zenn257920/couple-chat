@@ -21,7 +21,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const data = (await req.json()) as { sender?: unknown; body?: unknown };
+    const data = (await req.json()) as {
+      sender?: unknown;
+      body?: unknown;
+      replyToId?: unknown;
+    };
     if (data.sender !== "kaung" && data.sender !== "love") {
       return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
     }
@@ -39,7 +43,11 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const message = await insertMessage(sender, body);
+    const message = await insertMessage(
+      sender,
+      body,
+      typeof data.replyToId === "number" ? data.replyToId : null,
+    );
     // Notify the other phone with a system notification (FCM). Fire and
     // forget: push must never delay or break the message response.
     const other = otherSender(sender);

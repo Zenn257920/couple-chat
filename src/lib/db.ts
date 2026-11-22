@@ -1,6 +1,11 @@
 import { neon } from "@neondatabase/serverless";
 import type { Sender } from "./names";
 
+export type MessageReaction = {
+  emoji: string;
+  senders: Sender[];
+};
+
 export type ChatMessage = {
   id: number;
   sender: Sender;
@@ -8,6 +13,9 @@ export type ChatMessage = {
   kind: string;
   created_at: string;
   read_at: string | null;
+  reply_to_id: number | null;
+  reply_to: { id: number; sender: Sender; body: string } | null;
+  reactions: MessageReaction[];
 };
 
 export type TypingState = {
@@ -28,29 +36,97 @@ export async function getMessages(limit = 200): Promise<ChatMessage[]> {
   // passed 200 messages new ones never loaded in the app (they still
   // arrived via push, whose text comes straight from the POST).
   const rows = await sql`
-    SELECT id, sender, body, kind, created_at, read_at
+    SELECT id, sender, body, kind, created_at, read_at, reply_to_id
     FROM (
-      SELECT id, sender, body, kind, created_at, read_at
+      SELECT id, sender, body, kind, created_at, read_at, reply_to_id
       FROM chat_messages
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit}
     ) AS recent
     ORDER BY created_at ASC, id ASC
   `;
-  return rows as unknown as ChatMessage[];
+  const messages = rows as unknown as ChatMessage[];
+  if (!messages.length) return messages;
+  const ids = messages.map((m) => m.id);
+  const replyIds = [...new Set(messages.map((m) => m.reply_to_id).filter((x): x is number => x !== null))];
+  const [reactionRows, replyRows] = await Promise.all([
+    sql`SELECT message_id, sender, emoji, created_at FROM chat_reactions WHERE message_id = ANY(${ids}) ORDER BY created_at ASC`,
+    replyIds.length
+      ? sql`SELECT id, sender, body FROM chat_messages WHERE id = ANY(${replyIds})`
+      : Promise.resolve([] as unknown[]),
+  ]);
+  const replyById = new Map(
+    (replyRows as unknown as { id: number; sender: Sender; body: string }[]).map((r) => [r.id, r]),
+  );
+  const reactionsByMessage = new Map<number, MessageReaction[]>();
+  for (const r of reactionRows as unknown as { message_id: number; sender: Sender; emoji: string }[]) {
+    const list = reactionsByMessage.get(r.message_id) ?? [];
+    const group = list.find((g) => g.emoji === r.emoji);
+    if (group) group.senders.push(r.sender);
+    else list.push({ emoji: r.emoji, senders: [r.sender] });
+    reactionsByMessage.set(r.message_id, list);
+  }
+  for (const m of messages) {
+    m.reply_to = m.reply_to_id ? (replyById.get(m.reply_to_id) ?? null) : null;
+    m.reactions = reactionsByMessage.get(m.id) ?? [];
+  }
+  return messages;
 }
 
 export async function insertMessage(
   sender: Sender,
   body: string,
+  replyToId?: number | null,
 ): Promise<ChatMessage> {
   const sql = getSql();
+  // Only link the reply when the quoted message really exists.
+  let replyTo: number | null = null;
+  if (typeof replyToId === "number" && Number.isInteger(replyToId) && replyToId > 0) {
+    const target = await sql`SELECT id FROM chat_messages WHERE id = ${replyToId}`;
+    if (target.length) replyTo = replyToId;
+  }
   const rows = await sql`
-    INSERT INTO chat_messages (sender, body, kind)
-    VALUES (${sender}, ${body}, 'text')
-    RETURNING id, sender, body, kind, created_at, read_at
+    INSERT INTO chat_messages (sender, body, kind, reply_to_id)
+    VALUES (${sender}, ${body}, 'text', ${replyTo})
+    RETURNING id, sender, body, kind, created_at, read_at, reply_to_id
   `;
-  return rows[0] as unknown as ChatMessage;
+  const message = rows[0] as unknown as ChatMessage;
+  message.reactions = [];
+  message.reply_to = null;
+  if (replyTo) {
+    const target = await sql`SELECT id, sender, body FROM chat_messages WHERE id = ${replyTo}`;
+    if (target.length) message.reply_to = target[0] as unknown as ChatMessage["reply_to"];
+  }
+  return message;
+}
+
+// Toggle a reaction: same emoji again removes it, another emoji
+// replaces it (one reaction per person per message, like Telegram).
+// Returns true when the reaction is now set, false when removed.
+export async function toggleReaction(
+  messageId: number,
+  sender: Sender,
+  emoji: string,
+): Promise<boolean> {
+  const sql = getSql();
+  const existing = await sql`
+    SELECT emoji FROM chat_reactions
+    WHERE message_id = ${messageId} AND sender = ${sender}
+  `;
+  if (existing.length && (existing[0] as unknown as { emoji: string }).emoji === emoji) {
+    await sql`
+      DELETE FROM chat_reactions
+      WHERE message_id = ${messageId} AND sender = ${sender}
+    `;
+    return false;
+  }
+  await sql`
+    INSERT INTO chat_reactions (message_id, sender, emoji)
+    VALUES (${messageId}, ${sender}, ${emoji})
+    ON CONFLICT (message_id, sender)
+    DO UPDATE SET emoji = EXCLUDED.emoji, created_at = now()
+  `;
+  return true;
 }
 
 export async function getTyping(): Promise<TypingState> {
