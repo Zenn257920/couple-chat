@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "We Talk 💙",
-  description: "Private real-time chat for the two of us.",
+  description: "Chat with friends, one-to-one or in groups.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
-import { deleteMeta, getMeta, setMeta } from "@/lib/db";
+import { getTogetherDate, isRoomMember, setTogetherDate } from "@/lib/db";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const TOGETHER_KEY = "together_since";
-
-// The date the couple has been together (YYYY-MM-DD), shared by both
-// phones. The header shows a live counter from this date; either
-// phone can set or change it in Settings.
-export async function GET() {
+// The Together date lives on ONE room — the couple's DM
+// (rooms.together_since, backfilled from chat_meta by the migration).
+// Other rooms never have a counter. The date can only be changed
+// when the room already has one set.
+export async function GET(req: Request) {
   try {
-    const date = await getMeta(TOGETHER_KEY);
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const roomId = Number(new URL(req.url).searchParams.get("roomId"));
+    if (!Number.isInteger(roomId) || roomId <= 0) {
+      return NextResponse.json({ error: "Invalid roomId" }, { status: 400 });
+    }
+    if (!(await isRoomMember(roomId, session.user.id))) {
+      return NextResponse.json({ error: "Not a member" }, { status: 403 });
+    }
+    const date = await getTogetherDate(roomId);
     return NextResponse.json({ date });
   } catch (e) {
     console.error("GET /api/together failed", e);
@@ -24,10 +35,27 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const data = (await req.json()) as { date?: unknown };
-    // null clears the date (the counter bar hides again).
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const data = (await req.json()) as { roomId?: unknown; date?: unknown };
+    if (
+      typeof data.roomId !== "number" ||
+      !Number.isInteger(data.roomId) ||
+      data.roomId <= 0
+    ) {
+      return NextResponse.json({ error: "Invalid roomId" }, { status: 400 });
+    }
+    // null clears the date (the counter hides again).
     if (data.date === null) {
-      await deleteMeta(TOGETHER_KEY);
+      const ok = await setTogetherDate(data.roomId, session.user.id, null);
+      if (!ok) {
+        return NextResponse.json(
+          { error: "This room has no Together date" },
+          { status: 403 },
+        );
+      }
       return NextResponse.json({ ok: true, date: null });
     }
     if (
@@ -37,7 +65,13 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "Invalid date" }, { status: 400 });
     }
-    await setMeta(TOGETHER_KEY, data.date);
+    const ok = await setTogetherDate(data.roomId, session.user.id, data.date);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "This room has no Together date" },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ ok: true, date: data.date });
   } catch (e) {
     console.error("POST /api/together failed", e);

@@ -2,24 +2,48 @@ import { NextResponse } from "next/server";
 import {
   getMessages,
   getPresence,
+  getRoomMemberIds,
+  getRoomUsers,
   getTyping,
   insertMessage,
+  isRoomMember,
   updateMessage,
 } from "@/lib/db";
-import { displayName, otherSender, type Sender } from "@/lib/names";
-import { sendPushTo } from "@/lib/push";
+import { requireSession } from "@/lib/session";
+import { sendPushToRoom } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+function roomIdParam(req: Request): number | null {
+  const id = Number(new URL(req.url).searchParams.get("roomId"));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// Load one room's messages (newest 200), typing state, presence of
+// its members, and the members' display info. Session + membership
+// required — a room is only visible to its members.
+export async function GET(req: Request) {
   try {
-    const [messages, typing, presence] = await Promise.all([
-      getMessages(),
-      getTyping(),
-      getPresence(),
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    const roomId = roomIdParam(req);
+    if (!roomId) {
+      return NextResponse.json({ error: "Invalid roomId" }, { status: 400 });
+    }
+    if (!(await isRoomMember(roomId, session.user.id))) {
+      return NextResponse.json({ error: "Not a member" }, { status: 403 });
+    }
+    const memberIds = await getRoomMemberIds(roomId);
+    const [messages, typing, presence, users] = await Promise.all([
+      getMessages(roomId),
+      getTyping(roomId),
+      getPresence(memberIds),
+      getRoomUsers(memberIds),
     ]);
-    return NextResponse.json({ messages, typing, presence });
+    return NextResponse.json({ messages, typing, presence, users });
   } catch (e) {
     console.error("GET /api/messages failed", e);
     return NextResponse.json(
@@ -32,14 +56,14 @@ export async function GET() {
 // Edit your own text message (no delete). No push for edits.
 export async function PATCH(req: Request) {
   try {
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
     const data = (await req.json()) as {
       id?: unknown;
-      sender?: unknown;
       body?: unknown;
     };
-    if (data.sender !== "kaung" && data.sender !== "love") {
-      return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
-    }
     if (typeof data.id !== "number" || !Number.isInteger(data.id) || data.id <= 0) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
@@ -56,7 +80,7 @@ export async function PATCH(req: Request) {
         { status: 400 },
       );
     }
-    const message = await updateMessage(data.id, data.sender, body);
+    const message = await updateMessage(data.id, session.user.id, body);
     if (!message) {
       return NextResponse.json(
         { error: "Message not found or not yours" },
@@ -75,8 +99,12 @@ export async function PATCH(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
     const data = (await req.json()) as {
-      sender?: unknown;
+      roomId?: unknown;
       body?: unknown;
       replyToId?: unknown;
       kind?: unknown;
@@ -87,10 +115,14 @@ export async function POST(req: Request) {
       photoWidth?: unknown;
       photoHeight?: unknown;
     };
-    if (data.sender !== "kaung" && data.sender !== "love") {
-      return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
+    const roomId = data.roomId;
+    if (typeof roomId !== "number" || !Number.isInteger(roomId) || roomId <= 0) {
+      return NextResponse.json({ error: "Invalid roomId" }, { status: 400 });
     }
-    const sender = data.sender as Sender;
+    if (!(await isRoomMember(roomId, session.user.id))) {
+      return NextResponse.json({ error: "Not a member" }, { status: 403 });
+    }
+    const senderId = session.user.id;
     // Voice messages carry audio instead of text. The stored body is
     // just the label (used for the push preview); the audio itself is
     // fetched lazily via /api/audio and never rides the message list.
@@ -161,16 +193,22 @@ export async function POST(req: Request) {
       }
     }
     const message = await insertMessage(
-      sender,
+      senderId,
+      roomId,
       body,
       typeof data.replyToId === "number" ? data.replyToId : null,
       voice,
       photo,
     );
-    // Notify the other phone with a system notification (FCM). Fire and
-    // forget: push must never delay or break the message response.
-    const other = otherSender(sender);
-    void sendPushTo(other, displayName(sender), body.slice(0, 120), sender);
+    // Notify the other members of the room with a system
+    // notification (FCM). Fire and forget: push must never delay or
+    // break the message response.
+    void sendPushToRoom(
+      roomId,
+      session.user.name,
+      body.slice(0, 120),
+      senderId,
+    );
     return NextResponse.json({ message }, { status: 201 });
   } catch (e) {
     console.error("POST /api/messages failed", e);

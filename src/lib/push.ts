@@ -12,9 +12,15 @@
 // The Android app side also needs google-services.json in android/app/
 // (from the Firebase console); until then the APK build succeeds but
 // token registration fails gracefully at runtime.
+//
+// Tokens are registered per Better Auth user id. A new message
+// notifies every OTHER member of the room (DM or group).
 import { createSign } from "node:crypto";
-import { deletePushToken, getPushTokens } from "./db";
-import type { Sender } from "./names";
+import {
+  deletePushToken,
+  getPushTokensForUsers,
+  getRoomMemberIds,
+} from "./db";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -117,67 +123,95 @@ async function getAccessToken(): Promise<string | null> {
   }
 }
 
-// Send a system notification to every device registered for `recipient`.
+async function sendToTokens(
+  tokens: string[],
+  title: string,
+  body: string,
+  senderId: string,
+): Promise<void> {
+  const cfg = firebaseConfig();
+  if (!cfg) {
+    console.error("FCM skipped: Firebase env vars missing");
+    return; // Firebase not configured yet.
+  }
+  if (!tokens.length) {
+    console.error("FCM skipped: no tokens for recipients");
+    return;
+  }
+  const accessToken = await getAccessToken();
+  if (!accessToken) return;
+  for (const token of tokens) {
+    try {
+      const res = await fetch(
+        `https://fcm.googleapis.com/v1/projects/${cfg.projectId}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: {
+              token,
+              notification: { title, body },
+              android: { priority: "high" },
+              data: { sender: senderId, type: "message" },
+            },
+          }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string; details?: { errorCode?: string }[] };
+        };
+        const code = err.error?.details?.[0]?.errorCode ?? "";
+        // Stale/unregistered token — drop it so we stop trying.
+        if (code === "UNREGISTERED" || res.status === 404) {
+          await deletePushToken(token).catch(() => {});
+        } else {
+          console.error("FCM send failed", res.status, err.error?.message);
+        }
+      } else {
+        console.log("FCM send ok", res.status);
+      }
+    } catch (e) {
+      console.error("FCM send error", e);
+    }
+  }
+}
+
+// Send a system notification to every device registered for `userId`.
 // Best-effort: any failure is logged, never thrown — the chat message
 // itself was already saved before this runs.
 export async function sendPushTo(
-  recipient: Sender,
+  userId: string,
   title: string,
   body: string,
-  senderId: Sender,
+  senderId: string,
 ): Promise<void> {
   try {
-    const cfg = firebaseConfig();
-    if (!cfg) {
-      console.error("FCM skipped: Firebase env vars missing");
-      return; // Firebase not configured yet.
-    }
-    const tokens = await getPushTokens(recipient);
-    if (!tokens.length) {
-      console.error("FCM skipped: no tokens for", recipient);
-      return;
-    }
-    const accessToken = await getAccessToken();
-    if (!accessToken) return;
-    for (const token of tokens) {
-      try {
-        const res = await fetch(
-          `https://fcm.googleapis.com/v1/projects/${cfg.projectId}/messages:send`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              message: {
-                token,
-                notification: { title, body },
-                android: { priority: "high" },
-                data: { sender: senderId, type: "message" },
-              },
-            }),
-          },
-        );
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as {
-            error?: { message?: string; details?: { errorCode?: string }[] };
-          };
-          const code = err.error?.details?.[0]?.errorCode ?? "";
-          // Stale/unregistered token — drop it so we stop trying.
-          if (code === "UNREGISTERED" || res.status === 404) {
-            await deletePushToken(token).catch(() => {});
-          } else {
-            console.error("FCM send failed", res.status, err.error?.message);
-          }
-        } else {
-          console.log("FCM send ok to", recipient, res.status);
-        }
-      } catch (e) {
-        console.error("FCM send error", e);
-      }
-    }
+    const tokens = await getPushTokensForUsers([userId]);
+    await sendToTokens(tokens, title, body, senderId);
   } catch (e) {
     console.error("sendPushTo failed", e);
+  }
+}
+
+// Notify every member of a room except the sender (DM or group).
+export async function sendPushToRoom(
+  roomId: number,
+  title: string,
+  body: string,
+  senderId: string,
+): Promise<void> {
+  try {
+    const memberIds = (await getRoomMemberIds(roomId)).filter(
+      (id) => id !== senderId,
+    );
+    if (!memberIds.length) return;
+    const tokens = await getPushTokensForUsers(memberIds);
+    await sendToTokens(tokens, title, body, senderId);
+  } catch (e) {
+    console.error("sendPushToRoom failed", e);
   }
 }

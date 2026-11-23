@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoiceRecorder } from "capacitor-voice-recorder";
 import {
+  ArrowLeft,
   Camera,
   Check,
   CheckCheck,
@@ -10,7 +11,6 @@ import {
   Copy,
   Heart,
   LoaderCircle,
-  Lock,
   Mic,
   MoreVertical,
   PartyPopper,
@@ -20,29 +20,25 @@ import {
   Plane,
   Play,
   Reply,
+  Search,
   Send,
   Shapes,
   Smartphone,
   Smile,
   Square,
+  UserPlus,
+  Users,
   UtensilsCrossed,
   X,
   type LucideIcon,
 } from "lucide-react";
-import {
-  DEFAULT_DISPLAY_NAMES,
-  displayName,
-  otherSender,
-  type Sender,
-} from "@/lib/names";
 import { REACTION_EMOJIS } from "@/lib/reactions";
-import type { ChatMessage } from "@/lib/db";
+import type { ChatMessage, RoomSummary, RoomUser } from "@/lib/db";
+import { authClient } from "@/lib/auth-client";
+import AuthScreen from "@/components/AuthScreen";
 
-const IDENTITY_KEY = "lovechat.identity";
-// v2: names reset when the defaults changed to Person 1 / Person 2,
-// so phones that stored the old Burmese names pick up the new ones.
-const NAMES_KEY = "lovechat.names.v2";
 const POLL_MS = 1500;
+const ROOMS_POLL_MS = 3000;
 
 // Built-in emoji picker — no extra dependency, just a grid of common
 // emojis grouped by category. Tapping one inserts it at the cursor.
@@ -89,23 +85,10 @@ const EMOJI_GROUPS: { label: string; icon: LucideIcon; emojis: string[] }[] = [
   },
 ];
 
-type Names = Record<Sender, string>;
-
-function loadNames(): Names {
-  try {
-    const raw = localStorage.getItem(NAMES_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Names>;
-      return {
-        kaung: parsed.kaung?.trim() || DEFAULT_DISPLAY_NAMES.kaung,
-        love: parsed.love?.trim() || DEFAULT_DISPLAY_NAMES.love,
-      };
-    }
-  } catch {
-    // fall through to defaults
-  }
-  return { ...DEFAULT_DISPLAY_NAMES };
-}
+type FriendSearchResult = RoomUser & {
+  friendship_status: string | null;
+  friendship_requester: string | null;
+};
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", {
@@ -258,11 +241,33 @@ function dayKey(iso: string): string {
 }
 
 export default function Home() {
-  const [identity, setIdentity] = useState<Sender | null>(null);
-  const [names, setNames] = useState<Names>({ ...DEFAULT_DISPLAY_NAMES });
+  // Login gate: no session, no chat. The signed-in user IS the
+  // identity now — no per-phone picker anymore.
+  const { data: session, isPending: sessionPending } =
+    authClient.useSession();
+  // The signed-in user's id — the identity everywhere now.
+  const myId = session?.user.id ?? null;
   const [ready, setReady] = useState(false);
+  // Rooms (DMs + groups) and the open room. null = room list.
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [activeRoom, setActiveRoom] = useState<RoomSummary | null>(null);
+  // Friends screen (replaces the room list while open) + group
+  // creation modal.
+  const [showFriends, setShowFriends] = useState(false);
+  const [friends, setFriends] = useState<RoomUser[]>([]);
+  const [incoming, setIncoming] = useState<RoomUser[]>([]);
+  const [outgoing, setOutgoing] = useState<RoomUser[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showGroupCreate, setShowGroupCreate] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupPicked, setGroupPicked] = useState<string[]>([]);
+  // Display info for every user we know (room members, friends):
+  // name, email, Google avatar, uploaded profile photo.
+  const [usersById, setUsersById] = useState<Record<string, RoomUser>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [typingFrom, setTypingFrom] = useState<Sender | null>(null);
+  const [typingFrom, setTypingFrom] = useState<string | null>(null);
   const [input, setInput] = useState("");
   // Height of the visible area while the on-screen keyboard is open
   // (the visual viewport shrinks when it appears). When set, the chat
@@ -279,26 +284,19 @@ export default function Home() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   // Message the long-press react menu is open for.
   const [reactMenuFor, setReactMenuFor] = useState<ChatMessage | null>(null);
-  // Confirming an identity reset in Settings.
-  const [confirmResetIdentity, setConfirmResetIdentity] = useState(false);
   // Message being edited (own text message only) — the composer turns
   // into an edit box with an "Editing message" bar above it.
   const [editing, setEditing] = useState<ChatMessage | null>(null);
-  // Presence: each phone heartbeats every 10s; the header shows the
-  // other phone as Online / Last seen.
-  const [presence, setPresence] = useState<Record<Sender, string | null>>({
-    kaung: null,
-    love: null,
-  });
+  // Presence: every user heartbeats every 10s; the header shows a
+  // DM partner as Online / Last seen. Keyed by user id.
+  const [presence, setPresence] = useState<Record<string, string | null>>(
+    {},
+  );
   // Chat wallpaper (per phone, localStorage).
   const [wallpaper, setWallpaper] = useState("default");
   // Recently used emojis for the picker.
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
-  // Profile photos (both phones, data URLs) — fetched once on load.
-  const [photos, setPhotos] = useState<Record<Sender, string | null>>({
-    kaung: null,
-    love: null,
-  });
+  // Profile photo upload state (mine — shown to friends).
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   // Chat photos: cached data URLs by message id (fetched lazily on
@@ -332,9 +330,6 @@ export default function Home() {
   const [newWhileAway, setNewWhileAway] = useState(0);
   // Tiny transient toast (e.g. "Copied").
   const [toast, setToast] = useState("");
-  const [draftNames, setDraftNames] = useState<Names>({
-    ...DEFAULT_DISPLAY_NAMES,
-  });
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -365,18 +360,39 @@ export default function Home() {
   const lastNotifiedId = useRef(0);
   const hydratedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const identityRef = useRef<Sender | null>(null);
-  identityRef.current = identity;
+  // Ref mirrors for the poll, whose callback must not close over
+  // stale state.
+  const myIdRef = useRef<string | null>(null);
+  myIdRef.current = session?.user.id ?? null;
+  const activeRoomRef = useRef<RoomSummary | null>(null);
+  activeRoomRef.current = activeRoom;
 
-  // Load identity + names from this phone on first open.
+  // Load per-phone settings (wallpaper, recent emojis) on first open.
   useEffect(() => {
-    setNames(loadNames());
     setWallpaper(loadWallpaper());
     setRecentEmojis(loadRecentEmojis());
-    const saved = localStorage.getItem(IDENTITY_KEY);
-    if (saved === "kaung" || saved === "love") setIdentity(saved);
     setReady(true);
   }, []);
+
+  // Helpers: display name + avatar for any user id. Unknown ids
+  // (a deleted account) show as "Someone".
+  function nameOf(userId: string): string {
+    return usersById[userId]?.name?.trim() || "Someone";
+  }
+  function avatarOf(userId: string): string | null {
+    const u = usersById[userId];
+    if (!u) return null;
+    if (u.photo) return `data:image/jpeg;base64,${u.photo}`;
+    return u.image ?? null;
+  }
+  function mergeUsers(list: RoomUser[]) {
+    if (!list.length) return;
+    setUsersById((prev) => {
+      const next = { ...prev };
+      for (const u of list) next[u.id] = u;
+      return next;
+    });
+  }
 
   const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({
@@ -398,18 +414,24 @@ export default function Home() {
   }, [messages]);
 
   const fetchState = useCallback(async () => {
+    const roomId = activeRoomRef.current?.id;
+    if (!roomId) return;
     try {
-      const res = await fetch("/api/messages", { cache: "no-store" });
+      const res = await fetch(`/api/messages?roomId=${roomId}`, {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error("load failed");
       const data = (await res.json()) as {
         messages: ChatMessage[];
-        typing: { sender: Sender } | null;
-        presence?: Record<Sender, string | null>;
+        typing: { sender: string } | null;
+        presence?: Record<string, string | null>;
+        users?: RoomUser[];
       };
       setConnected(true);
       setLoadError("");
       if (data.presence) setPresence(data.presence);
-      const me = identityRef.current;
+      if (data.users) mergeUsers(data.users);
+      const me = myIdRef.current;
       // Are we near the bottom, and did any new messages from the
       // other person arrive while we were scrolled up?
       const el = listRef.current;
@@ -462,13 +484,13 @@ export default function Home() {
           notifyIncoming();
         }
       }
-      // Mark the other person's messages as read.
+      // Mark the others' messages as read.
       const last = data.messages[data.messages.length - 1];
       if (me && last && last.sender !== me) {
         void fetch("/api/messages/read", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sender: me }),
+          body: JSON.stringify({ roomId }),
         }).catch(() => {});
       }
     } catch {
@@ -477,24 +499,21 @@ export default function Home() {
     }
   }, [scrollToBottom]);
 
-  // Poll every 1.5s for new messages / typing / read state.
+  // Poll every 1.5s for new messages / typing / read state, while a
+  // room is open.
   useEffect(() => {
-    if (!identity) return;
+    if (!activeRoom) return;
     void fetchState();
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
-  }, [identity, fetchState]);
+  }, [activeRoom, fetchState]);
 
-  // Presence heartbeat: tell the other phone we're here, every 10s
-  // while the app is open (also when it comes back to the front).
+  // Presence heartbeat: tell friends we're here, every 10s while
+  // the app is open (also when it comes back to the front).
   useEffect(() => {
-    if (!identity) return;
+    if (!session) return;
     const beat = () => {
-      void fetch("/api/presence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: identity }),
-      }).catch(() => {});
+      void fetch("/api/presence", { method: "POST" }).catch(() => {});
     };
     beat();
     const t = window.setInterval(beat, 10_000);
@@ -508,47 +527,38 @@ export default function Home() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [identity]);
+  }, [session]);
 
-  // Profile photos: fetch both once when the app opens (never in the
-  // 1.5s poll — there is no need to re-fetch them).
-  useEffect(() => {
-    if (!identity) return;
-    void (async () => {
-      try {
-        const res = await fetch("/api/profile-photo", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          photos: Record<Sender, string | null>;
-        };
-        setPhotos({
-          kaung: data.photos.kaung
-            ? `data:image/jpeg;base64,${data.photos.kaung}`
-            : null,
-          love: data.photos.love
-            ? `data:image/jpeg;base64,${data.photos.love}`
-            : null,
-        });
-      } catch {
-        // Photos stay as Heart-icon fallbacks.
-      }
-    })();
-  }, [identity]);
+  // Room list: load my chats, and refresh them every 3s while the
+  // list is showing (new messages, unread counts).
+  const fetchRooms = useCallback(async () => {
+    if (!myIdRef.current) return;
+    try {
+      const res = await fetch("/api/rooms", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        rooms: RoomSummary[];
+        users: RoomUser[];
+      };
+      setRooms(data.rooms);
+      mergeUsers(data.users);
+    } catch {
+      // The list just keeps its last good state.
+    }
+  }, []);
 
-  // Together date: shared by both phones, fetched once on open.
   useEffect(() => {
-    if (!identity) return;
-    void (async () => {
-      try {
-        const res = await fetch("/api/together", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { date: string | null };
-        setTogetherSince(data.date);
-      } catch {
-        // No counter until a date is set in Settings.
-      }
-    })();
-  }, [identity]);
+    if (!session || activeRoom) return;
+    void fetchRooms();
+    const t = setInterval(() => void fetchRooms(), ROOMS_POLL_MS);
+    return () => clearInterval(t);
+  }, [session, activeRoom, fetchRooms]);
+
+  // The Together date lives on the room (only the couple's DM has
+  // one) — it follows the open room.
+  useEffect(() => {
+    setTogetherSince(activeRoom?.together_since ?? null);
+  }, [activeRoom]);
 
   // Tick the Together counter once a second (only while a date is
   // set — the message list is memoized, so this re-render is cheap).
@@ -592,14 +602,14 @@ export default function Home() {
   // Memoize the message list so typing in the composer — which
   // re-renders this component on every keystroke — does not re-render
   // all 200 bubbles. That full re-render per keystroke was the typing
-  // lag. The list only rebuilds when the messages, identity, names,
-  // or typing indicator actually change.
+  // lag. The list only rebuilds when the messages, my user id, the
+  // display names, or typing indicator actually change.
   const renderedMessages = useMemo(() => {
     if (messages.length === 0) return null;
     return (
       <div className="flex flex-col gap-1.5">
         {messages.map((m, i) => {
-          const own = m.sender === identity;
+          const own = m.sender === myId;
           const prev = messages[i - 1];
           const showDay =
             !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
@@ -664,7 +674,7 @@ export default function Home() {
                           own ? "text-blue-100" : "text-ocean"
                         }`}
                       >
-                        {displayName(m.reply_to.sender, names)}
+                        {nameOf(m.reply_to.sender)}
                       </span>
                       <span
                         className={`block truncate text-xs ${
@@ -677,7 +687,7 @@ export default function Home() {
                   )}
                   {showName && (
                     <p className="mb-0.5 text-xs font-bold text-ocean-light">
-                      {displayName(m.sender, names)}
+                      {nameOf(m.sender)}
                     </p>
                   )}
                   {m.kind === "voice" && m.has_audio ? (
@@ -822,7 +832,7 @@ export default function Home() {
                 >
                   {m.reactions.map((g) => {
                     const mine =
-                      !!identity && g.senders.includes(identity);
+                      !!myId && g.senders.includes(myId);
                     return (
                       <button
                         key={g.emoji}
@@ -852,7 +862,7 @@ export default function Home() {
                 <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
                 <span className="typing-dot inline-block h-2 w-2 rounded-full bg-ocean" />
                 <span className="ml-1 text-xs text-ink-soft">
-                  {displayName(typingFrom, names)} is typing…
+                  {nameOf(typingFrom)} is typing…
                 </span>
               </span>
             </div>
@@ -861,16 +871,17 @@ export default function Home() {
         <div ref={bottomRef} />
       </div>
     );
-  }, [messages, identity, names, typingFrom, playingId, loadingAudioId, photoUrls, loadingPhotoId]);
+  }, [messages, myId, usersById, typingFrom, playingId, loadingAudioId, photoUrls, loadingPhotoId]);
 
   // Register this phone for full push notifications (APK only). FCM
-  // gives the phone a device token; the server stores it so a message
-  // from the other person can wake this phone with a system
-  // notification, even when the app is closed. No-ops on the web, and
-  // fails quietly until Firebase is configured (google-services.json
-  // in the APK + FIREBASE_* env vars on the server).
+  // gives the phone a device token; the server stores it under the
+  // signed-in user so a message from a friend can wake this phone
+  // with a system notification, even when the app is closed. No-ops
+  // on the web, and fails quietly until Firebase is configured
+  // (google-services.json in the APK + FIREBASE_* env vars on the
+  // server).
   useEffect(() => {
-    if (!identity) return;
+    if (!session) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -886,7 +897,7 @@ export default function Home() {
           void fetch("/api/push/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sender: identity, token: t.value }),
+            body: JSON.stringify({ token: t.value }),
           }).catch(() => {});
         });
         await PushNotifications.addListener("registrationError", () => {});
@@ -898,7 +909,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [identity]);
+  }, [session]);
 
   // Scroll to bottom once messages first load.
   useEffect(() => {
@@ -906,38 +917,166 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length === 0]);
 
-  function pickIdentity(sender: Sender) {
-    localStorage.setItem(IDENTITY_KEY, sender);
-    setIdentity(sender);
-    setShowSettings(false);
-    ensureAudio();
+  // --- Rooms, friends, groups ---
+
+  // Open a room: clear the old room's state first so its messages
+  // never flash in the new room.
+  function enterRoom(room: RoomSummary) {
+    setMessages([]);
+    setTypingFrom(null);
+    setReplyTo(null);
+    setEditing(null);
+    setReactMenuFor(null);
+    setShowEmoji(false);
+    setNewWhileAway(0);
+    setShowScrollDown(false);
+    setLoadError("");
+    hydratedRef.current = false;
+    lastNotifiedId.current = 0;
+    setShowFriends(false);
+    setShowGroupCreate(false);
+    setActiveRoom(room);
   }
 
-  // Identity lock: a phone's identity is picked once (first open) and
-  // cannot be switched in Settings — otherwise either phone could
-  // impersonate the other person (and mis-route push notifications).
-  // Resetting clears the saved identity and shows the first-open
-  // picker again; push re-registers under the new identity because
-  // the registration effect depends on `identity`.
-  function resetIdentity() {
-    localStorage.removeItem(IDENTITY_KEY);
-    setIdentity(null);
-    setShowSettings(false);
-    setConfirmResetIdentity(false);
+  function exitRoom() {
+    setActiveRoom(null);
+    setMessages([]);
+    void fetchRooms();
   }
 
-  function saveNames() {
-    const cleaned: Names = {
-      kaung: draftNames.kaung.trim() || DEFAULT_DISPLAY_NAMES.kaung,
-      love: draftNames.love.trim() || DEFAULT_DISPLAY_NAMES.love,
-    };
-    localStorage.setItem(NAMES_KEY, JSON.stringify(cleaned));
-    setNames(cleaned);
-    setShowSettings(false);
-    setConfirmResetIdentity(false);
+  async function openDM(friendId: string) {
+    const me = myIdRef.current;
+    if (!me) return;
+    try {
+      const res = await fetch("/api/rooms/dm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendId }),
+      });
+      if (!res.ok) throw new Error("open failed");
+      const data = (await res.json()) as { room: RoomSummary };
+      const room: RoomSummary = {
+        ...data.room,
+        lastMessage: null,
+        unread: 0,
+        memberIds: [me, friendId],
+      };
+      setRooms((prev) =>
+        prev.some((r) => r.id === room.id) ? prev : [room, ...prev],
+      );
+      enterRoom(room);
+    } catch {
+      showToast("Couldn't open chat");
+    }
   }
 
-  // --- Profile photo (one per person, stored server-side) ---
+  async function fetchFriends() {
+    try {
+      const res = await fetch("/api/friends", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        friends: RoomUser[];
+        incoming: RoomUser[];
+        outgoing: RoomUser[];
+      };
+      setFriends(data.friends);
+      setIncoming(data.incoming);
+      setOutgoing(data.outgoing);
+      mergeUsers([...data.friends, ...data.incoming, ...data.outgoing]);
+    } catch {
+      // Friends just keep their last good state.
+    }
+  }
+
+  async function searchPeople(q: string) {
+    setSearchQuery(q);
+    if (q.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `/api/users/search?q=${encodeURIComponent(q.trim())}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { users: FriendSearchResult[] };
+      setSearchResults(data.users);
+      mergeUsers(data.users);
+    } catch {
+      // Search just shows nothing on failure.
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function sendFriendRequest(userId: string) {
+    try {
+      const res = await fetch("/api/friends/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) throw new Error("request failed");
+      const data = (await res.json()) as { status?: string };
+      showToast(
+        data.status === "accepted"
+          ? "You're friends now"
+          : data.status === "already"
+            ? "Already friends"
+            : "Friend request sent",
+      );
+      void fetchFriends();
+      void searchPeople(searchQuery);
+    } catch {
+      showToast("Couldn't send request");
+    }
+  }
+
+  async function respondRequest(requesterId: string, accept: boolean) {
+    try {
+      const res = await fetch("/api/friends/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requesterId, accept }),
+      });
+      if (!res.ok) throw new Error("respond failed");
+      showToast(accept ? "Friend added" : "Request declined");
+      void fetchFriends();
+    } catch {
+      showToast("Couldn't respond");
+    }
+  }
+
+  async function createGroup() {
+    const me = myIdRef.current;
+    if (!me || !groupName.trim() || !groupPicked.length) return;
+    try {
+      const res = await fetch("/api/rooms/group", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: groupName.trim(), memberIds: groupPicked }),
+      });
+      if (!res.ok) throw new Error("create failed");
+      const data = (await res.json()) as { room: RoomSummary };
+      const room: RoomSummary = {
+        ...data.room,
+        lastMessage: null,
+        unread: 0,
+        memberIds: [me, ...groupPicked],
+      };
+      setRooms((prev) => [room, ...prev]);
+      setGroupName("");
+      setGroupPicked([]);
+      enterRoom(room);
+      showToast("Group created");
+    } catch {
+      showToast("Couldn't create group");
+    }
+  }
+
+  // --- Profile photo (mine, stored server-side) ---
 
   // Compress a picked image to a max dimension JPEG. Profile photos
   // use 256px / 0.85 (~20–50 KB); chat photos use 1200px / 0.82
@@ -976,7 +1115,8 @@ export default function Home() {
   async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !identity) return;
+    const myId = myIdRef.current;
+    if (!file || !myId) return;
     setPhotoUploading(true);
     try {
       const compressed = await compressImage(file, 256, 0.85);
@@ -984,12 +1124,12 @@ export default function Home() {
       const res = await fetch("/api/profile-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: identity, photoBase64: compressed.base64 }),
+        body: JSON.stringify({ photoBase64: compressed.base64 }),
       });
       if (!res.ok) throw new Error("upload failed");
-      setPhotos((prev) => ({
+      setUsersById((prev) => ({
         ...prev,
-        [identity]: `data:image/jpeg;base64,${compressed.base64}`,
+        [myId]: { ...prev[myId], photo: compressed.base64 } as RoomUser,
       }));
       showToast("Profile photo updated");
     } catch {
@@ -1000,16 +1140,20 @@ export default function Home() {
   }
 
   async function removePhoto() {
-    if (!identity) return;
+    const myId = myIdRef.current;
+    if (!myId) return;
     setPhotoUploading(true);
     try {
       const res = await fetch("/api/profile-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: identity, photoBase64: null }),
+        body: JSON.stringify({ photoBase64: null }),
       });
       if (!res.ok) throw new Error("remove failed");
-      setPhotos((prev) => ({ ...prev, [identity]: null }));
+      setUsersById((prev) => ({
+        ...prev,
+        [myId]: { ...prev[myId], photo: null } as RoomUser,
+      }));
       showToast("Profile photo removed");
     } catch {
       showToast("Couldn't remove photo");
@@ -1023,7 +1167,9 @@ export default function Home() {
   async function onChatPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !identity || photoSending) return;
+    const roomId = activeRoomRef.current?.id;
+    const myId = myIdRef.current;
+    if (!file || !myId || !roomId || photoSending) return;
     setPhotoSending(true);
     let optimisticId = 0;
     try {
@@ -1034,7 +1180,7 @@ export default function Home() {
       setReplyTo(null);
       const optimistic: ChatMessage = {
         id: -Date.now(),
-        sender: identity,
+        sender: myId,
         body: "📷 Photo",
         kind: "photo",
         created_at: new Date().toISOString(),
@@ -1065,7 +1211,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: identity,
+          roomId,
           kind: "photo",
           photoBase64: compressed.base64,
           photoWidth: compressed.width,
@@ -1121,14 +1267,19 @@ export default function Home() {
   // --- Together date (shared by both phones) ---
 
   async function saveTogetherDate(date: string) {
+    const roomId = activeRoomRef.current?.id;
+    if (!roomId) return;
     setTogetherSince(date || null);
     try {
       const res = await fetch("/api/together", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: date || null }),
+        body: JSON.stringify({ roomId, date: date || null }),
       });
       if (!res.ok) throw new Error("save failed");
+      setActiveRoom((prev) =>
+        prev ? { ...prev, together_since: date || null } : prev,
+      );
       showToast(date ? "Together date saved" : "Together date cleared");
     } catch {
       showToast("Couldn't save date");
@@ -1241,14 +1392,15 @@ export default function Home() {
   }
 
   function pingTyping() {
-    if (!identity) return;
+    const roomId = activeRoomRef.current?.id;
+    if (!roomId) return;
     const now = Date.now();
     if (now - lastTypingPing.current < 2000) return;
     lastTypingPing.current = now;
     void fetch("/api/typing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender: identity }),
+      body: JSON.stringify({ roomId }),
     }).catch(() => {});
   }
 
@@ -1260,7 +1412,9 @@ export default function Home() {
       return;
     }
     const body = input.trim();
-    if (!body || !identity || sending) return;
+    const roomId = activeRoomRef.current?.id;
+    const myId = myIdRef.current;
+    if (!body || !myId || !roomId || sending) return;
     ensureAudio();
     setSending(true);
     setInput("");
@@ -1280,7 +1434,7 @@ export default function Home() {
     setReplyTo(null);
     const optimistic: ChatMessage = {
       id: -Date.now(),
-      sender: identity,
+      sender: myId,
       body,
       kind: "text",
       created_at: new Date().toISOString(),
@@ -1305,7 +1459,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: identity,
+          roomId,
           body,
           replyToId: replyingTo?.id ?? null,
         }),
@@ -1330,7 +1484,8 @@ export default function Home() {
   // --- Editing your own text message (no delete) ---
 
   function startEdit(m: ChatMessage) {
-    if (!identity || m.sender !== identity || m.kind !== "text") return;
+    const myId = myIdRef.current;
+    if (!myId || m.sender !== myId || m.kind !== "text") return;
     setEditing(m);
     setReplyTo(null);
     setShowEmoji(false);
@@ -1353,14 +1508,15 @@ export default function Home() {
 
   async function saveEdit() {
     const body = input.trim();
-    if (!body || !editing || !identity || sending) return;
+    const myId = myIdRef.current;
+    if (!body || !editing || !myId || sending) return;
     const target = editing;
     setSending(true);
     try {
       const res = await fetch("/api/messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: target.id, sender: identity, body }),
+        body: JSON.stringify({ id: target.id, body }),
       });
       if (!res.ok) throw new Error("edit failed");
       const data = (await res.json()) as { message: ChatMessage };
@@ -1383,8 +1539,9 @@ export default function Home() {
   // Toggle my reaction to an emoji on a message. Optimistic: update
   // locally right away; the poll corrects it within 1.5s anyway.
   async function reactTo(messageId: number, emoji: string) {
-    if (!identity) return;
-    const me = identity;
+    const myId = myIdRef.current;
+    if (!myId) return;
+    const me = myId;
     setReactMenuFor(null);
     setMessages((prev) =>
       prev.map((m) => {
@@ -1405,7 +1562,7 @@ export default function Home() {
       await fetch("/api/reactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: me, messageId, emoji }),
+        body: JSON.stringify({ messageId, emoji }),
       });
     } catch {
       // Poll will correct the optimistic state.
@@ -1578,7 +1735,9 @@ export default function Home() {
   }
 
   async function sendVoice() {
-    if (!voicePreview || !identity || sending) return;
+    const roomId = activeRoomRef.current?.id;
+    const myId = myIdRef.current;
+    if (!voicePreview || !myId || !roomId || sending) return;
     ensureAudio();
     setSending(true);
     const preview = voicePreview;
@@ -1588,7 +1747,7 @@ export default function Home() {
     setReplyTo(null);
     const optimistic: ChatMessage = {
       id: -Date.now(),
-      sender: identity,
+      sender: myId,
       body: "🎤 Voice message",
       kind: "voice",
       created_at: new Date().toISOString(),
@@ -1620,7 +1779,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: identity,
+          roomId,
           kind: "voice",
           audioBase64: base64,
           audioDuration: preview.seconds,
@@ -1732,7 +1891,7 @@ export default function Home() {
     }
   }
 
-  if (!ready) {
+  if (!ready || sessionPending) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-ice">
         <p className="flex items-center gap-1.5 text-ink-soft">
@@ -1742,45 +1901,422 @@ export default function Home() {
     );
   }
 
-  // First-open identity picker: each phone picks who is using it.
-  if (!identity) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center bg-ice px-6 text-center">
-        <div className="fade-up flex w-full max-w-sm flex-col items-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-ocean shadow-lg">
-            <Heart className="h-9 w-9 fill-white text-white" />
-          </div>
-          <h1 className="mt-6 text-2xl font-bold text-ink">We Talk</h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-            Our private little chat{" "}
-            <Heart className="inline h-3.5 w-3.5 fill-current text-ocean" />
-            <br />
-            Who&apos;s using this phone?
-          </p>
-          <div className="mt-8 flex w-full flex-col gap-3">
-            {(["kaung", "love"] as Sender[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => pickIdentity(s)}
-                className="w-full rounded-2xl bg-ocean px-6 py-4 text-lg font-bold text-white shadow-md transition active:scale-[0.98]"
-              >
-                I&apos;m {displayName(s, names)}
-              </button>
-            ))}
-          </div>
-          <p className="mt-6 text-xs text-ink-soft">
-            You can change this later in Settings
-          </p>
-        </div>
-      </div>
-    );
+  // No account, no chat — the auth screen handles sign in / sign up.
+  if (!session) {
+    return <AuthScreen />;
   }
 
-  const me = identity;
-  const other = otherSender(me);
-  const otherPhoto = photos[other];
-  const myPhoto = photos[me];
-  const lastOwnRead = [...messages].reverse().find((m) => m.sender === me);
+  const myIdNonNull = myId as string;
+
+  // --- Open-room derivations (only meaningful when a room is open) ---
+  const room = activeRoom;
+  const isGroup = room?.type === "group";
+  // The other person in a 1:1 chat (null in groups).
+  const otherId =
+    room && !isGroup
+      ? (room.memberIds.find((id) => id !== myId) ?? null)
+      : null;
+  const otherPhoto = otherId ? avatarOf(otherId) : null;
+  const myPhoto = avatarOf(myIdNonNull);
+  const roomTitle = !room
+    ? ""
+    : isGroup
+      ? (room.name ?? "Group")
+      : nameOf(otherId ?? "");
+  const lastOwnRead = [...messages].reverse().find((m) => m.sender === myId);
+
+  // --- Room list screen (no room open) ---
+  const roomListScreen = (
+    <>
+      {/* Header */}
+      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-xl text-white">
+          {myPhoto ? (
+            <img src={myPhoto} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <Heart className="h-5 w-5 fill-white text-white" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-bold text-ink">We Talk</h1>
+          <p className="truncate text-xs text-ink-soft">
+            {session.user.name} • {rooms.length} chat
+            {rooms.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            void fetchFriends();
+            setShowFriends(true);
+          }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          aria-label="Friends"
+        >
+          <UserPlus className="h-5 w-5" />
+        </button>
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          aria-label="Settings"
+        >
+          <MoreVertical className="h-5 w-5" />
+        </button>
+      </header>
+
+      {/* Chats */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {rooms.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center text-center">
+              <Heart className="h-12 w-12 fill-ocean text-ocean" />
+              <p className="mt-4 text-lg font-bold text-ink">No chats yet</p>
+              <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-soft">
+                Add a friend to start chatting — 1:1 or in a group
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void fetchFriends();
+                  setShowFriends(true);
+                }}
+                className="mt-5 rounded-2xl bg-ocean px-6 py-3 text-sm font-bold text-white shadow-md transition active:scale-[0.98]"
+              >
+                Find friends
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {rooms.map((r) => {
+                const rIsGroup = r.type === "group";
+                const rOtherId = rIsGroup
+                  ? null
+                  : (r.memberIds.find((id) => id !== myId) ?? null);
+                const rPhoto = rOtherId ? avatarOf(rOtherId) : null;
+                const rTitle = rIsGroup
+                  ? (r.name ?? "Group")
+                  : nameOf(rOtherId ?? "");
+                const last = r.lastMessage;
+                const preview = last
+                  ? last.kind === "photo"
+                    ? "📷 Photo"
+                    : last.kind === "voice"
+                      ? "🎤 Voice message"
+                      : rIsGroup
+                        ? `${nameOf(last.senderId)}: ${last.body}`
+                        : last.body
+                  : "No messages yet";
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => enterRoom(r)}
+                    className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
+                  >
+                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                      {rIsGroup ? (
+                        <Users className="h-6 w-6" />
+                      ) : rPhoto ? (
+                        <img
+                          src={rPhoto}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-lg font-bold">
+                          {rTitle.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      {!rIsGroup && rOtherId && (
+                        <span
+                          className={`absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white ${
+                            isOnline(presence[rOtherId])
+                              ? "bg-green-500"
+                              : "bg-gray-400"
+                          }`}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate text-[15px] font-bold text-ink">
+                          {rTitle}
+                          {rIsGroup && (
+                            <span className="ml-1.5 text-xs font-semibold text-ink-soft">
+                              {r.memberIds.length} members
+                            </span>
+                          )}
+                        </p>
+                        {last && (
+                          <span className="shrink-0 text-[11px] text-ink-soft">
+                            {formatTime(last.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm text-ink-soft">
+                          {preview}
+                        </p>
+                        {r.unread > 0 && (
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-ocean px-1.5 text-[11px] font-bold text-white">
+                            {r.unread > 99 ? "99+" : r.unread}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            onClick={() => {
+              void fetchFriends();
+              setShowFriends(true);
+              setShowGroupCreate(true);
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ocean px-6 py-3.5 text-sm font-bold text-white shadow-md transition active:scale-[0.98]"
+          >
+            <Users className="h-4 w-4" /> New group
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  // --- Friends screen (search, requests, friends list) ---
+  const friendsScreen = (
+    <>
+      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
+        <button
+          onClick={() => {
+            setShowFriends(false);
+            setShowGroupCreate(false);
+            setSearchQuery("");
+            setSearchResults([]);
+          }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          aria-label="Back to chats"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-bold text-ink">Friends</h1>
+          <p className="truncate text-xs text-ink-soft">
+            Only friends can message each other
+          </p>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {/* Search people */}
+          <div className="flex items-center gap-2 rounded-2xl bg-card px-3 py-2 shadow-sm">
+            <Search className="h-5 w-5 shrink-0 text-ink-soft" />
+            <input
+              value={searchQuery}
+              onChange={(e) => void searchPeople(e.target.value)}
+              placeholder="Search by name or email…"
+              className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-soft"
+            />
+            {searching && <LoaderCircle className="h-4 w-4 animate-spin text-ink-soft" />}
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2">
+              {searchResults.map((u) => {
+                const status = u.friendship_status;
+                const requestedByThem =
+                  status === "pending" && u.friendship_requester === u.id;
+                const avatar = avatarOf(u.id);
+                return (
+                  <div
+                    key={u.id}
+                    className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-base font-bold">
+                          {u.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-bold text-ink">
+                        {u.name}
+                      </p>
+                      <p className="truncate text-xs text-ink-soft">
+                        {u.email}
+                      </p>
+                    </div>
+                    {status === "accepted" ? (
+                      <button
+                        type="button"
+                        onClick={() => void openDM(u.id)}
+                        className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
+                      >
+                        Chat
+                      </button>
+                    ) : status === "pending" ? (
+                      requestedByThem ? (
+                        <button
+                          type="button"
+                          onClick={() => void respondRequest(u.id, true)}
+                          className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
+                        >
+                          Accept
+                        </button>
+                      ) : (
+                        <span className="shrink-0 rounded-xl bg-ice-deep px-3 py-2 text-sm font-semibold text-ink-soft">
+                          Requested
+                        </span>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void sendFriendRequest(u.id)}
+                        className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Incoming requests */}
+          {incoming.length > 0 && (
+            <>
+              <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
+                Friend requests
+              </p>
+              <div className="flex flex-col gap-2">
+                {incoming.map((u) => {
+                  const avatar = avatarOf(u.id);
+                  return (
+                    <div
+                      key={u.id}
+                      className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-base font-bold">
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-bold text-ink">
+                          {u.name}
+                        </p>
+                        <p className="truncate text-xs text-ink-soft">
+                          {u.email}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void respondRequest(u.id, true)}
+                        className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void respondRequest(u.id, false)}
+                        className="shrink-0 rounded-xl bg-ice-deep px-3 py-2 text-sm font-bold text-ink-soft"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Friends list — tap to open the DM */}
+          <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
+            My friends ({friends.length})
+          </p>
+          {friends.length === 0 ? (
+            <p className="rounded-2xl bg-card px-4 py-4 text-center text-sm text-ink-soft shadow-sm">
+              No friends yet — search above to add someone.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {friends.map((u) => {
+                const avatar = avatarOf(u.id);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => void openDM(u.id)}
+                    className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
+                  >
+                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-base font-bold">
+                          {u.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span
+                        className={`absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white ${
+                          isOnline(presence[u.id])
+                            ? "bg-green-500"
+                            : "bg-gray-400"
+                        }`}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-bold text-ink">
+                        {u.name}
+                      </p>
+                      <p className="truncate text-xs text-ink-soft">
+                        {isOnline(presence[u.id])
+                          ? "Online"
+                          : formatLastSeen(presence[u.id]) || u.email}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-ocean">
+                      Chat →
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {outgoing.length > 0 && (
+            <p className="mt-4 text-center text-xs text-ink-soft">
+              {outgoing.length} request{outgoing.length === 1 ? "" : "s"}{" "}
+              waiting for a reply
+            </p>
+          )}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -1790,53 +2326,76 @@ export default function Home() {
         ...(wallpaper === "default" ? {} : WALLPAPERS[wallpaper]?.style),
       }}
     >
+      {!room ? (
+        showFriends ? (
+          friendsScreen
+        ) : (
+          roomListScreen
+        )
+      ) : (
+        <>
       {/* Header — Telegram-style floating rounded bar */}
       <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
-        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ocean text-xl text-white">
-          {otherPhoto ? (
+        <button
+          onClick={exitRoom}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          aria-label="Back to chats"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-xl text-white">
+          {isGroup ? (
+            <Users className="h-5 w-5" />
+          ) : otherPhoto ? (
             <img
               src={otherPhoto}
               alt=""
-              className="h-full w-full rounded-full object-cover"
+              className="h-full w-full object-cover"
             />
           ) : (
-            <Heart className="h-5 w-5 fill-white text-white" />
+            <span className="text-lg font-bold">
+              {roomTitle.charAt(0).toUpperCase()}
+            </span>
           )}
-          <span
-            className={`absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
-              isOnline(presence[other]) ? "bg-green-500" : "bg-gray-400"
-            }`}
-            title={isOnline(presence[other]) ? "Online" : "Offline"}
-          />
+          {!isGroup && otherId && (
+            <span
+              className={`absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
+                isOnline(presence[otherId]) ? "bg-green-500" : "bg-gray-400"
+              }`}
+              title={isOnline(presence[otherId]) ? "Online" : "Offline"}
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-bold text-ink">
-            {displayName("kaung", names)} &amp; {displayName("love", names)}
+            {roomTitle}
           </h1>
           <p
             className={`truncate text-xs ${
               typingFrom
                 ? "text-ocean"
-                : isOnline(presence[other])
+                : !isGroup && otherId && isOnline(presence[otherId])
                   ? "text-green-600"
                   : "text-ink-soft"
             }`}
           >
             {typingFrom
-              ? `${displayName(typingFrom, names)} is typing…`
-              : formatLastSeen(presence[other]) ||
-                (connected
-                  ? `Chatting with ${displayName(other, names)}`
-                  : "Offline — reconnecting…")}
+              ? `${nameOf(typingFrom)} is typing…`
+              : isGroup
+                ? `${room.memberIds.length} members`
+                : otherId
+                  ? formatLastSeen(presence[otherId]) ||
+                    (connected
+                      ? `Chatting with ${nameOf(otherId)}`
+                      : "Offline — reconnecting…")
+                  : ""}
           </p>
-          {/* Live Together counter, inside the header (under the nav
-              bar is only the chat background). Tap it to change the
-              date in Settings. */}
+          {/* Live Together counter — only the couple's DM has a date.
+              Tap it to change the date in Settings. */}
           {togetherSince && (
             <button
               type="button"
               onClick={() => {
-                setDraftNames({ ...names });
                 setShowSettings(true);
               }}
               className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-ocean"
@@ -1848,7 +2407,6 @@ export default function Home() {
         </div>
         <button
           onClick={() => {
-            setDraftNames({ ...names });
             setShowSettings(true);
           }}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
@@ -1884,8 +2442,9 @@ export default function Home() {
             <Heart className="h-12 w-12 fill-ocean text-ocean" />
             <p className="mt-4 text-lg font-bold text-ink">Hello</p>
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-soft">
-              A private little place for {displayName("kaung", names)} and{" "}
-              {displayName("love", names)} — send the first message
+              {isGroup
+                ? `This is the beginning of ${roomTitle} — send the first message`
+                : `Say hi to ${roomTitle} — send the first message`}
             </p>
           </div>
         ) : (
@@ -1925,7 +2484,7 @@ export default function Home() {
       {/* Read receipt hint for own last message */}
       {lastOwnRead?.read_at && (
         <p className="bg-ice px-4 pb-1 text-right text-[11px] text-ink-soft">
-          {displayName(other, names)} read this{" "}
+          {isGroup ? "Read" : `${roomTitle} read this`}{" "}
           <CheckCheck className="inline h-3.5 w-3.5" />
         </p>
       )}
@@ -1985,7 +2544,7 @@ export default function Home() {
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-ocean bg-ice px-3 py-2">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-ocean">
-                Replying to {displayName(replyTo.sender, names)}
+                Replying to {nameOf(replyTo.sender)}
               </p>
               <p className="truncate text-xs text-ink-soft">{replyTo.body}</p>
             </div>
@@ -2164,7 +2723,7 @@ export default function Home() {
                 }
               }}
               rows={1}
-              placeholder={`Message ${displayName(other, names)}…`}
+              placeholder={`Message ${roomTitle}…`}
               maxLength={2000}
               className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-ice px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-soft focus:border-ocean"
             />
@@ -2192,9 +2751,12 @@ export default function Home() {
           <p className="mt-1.5 text-center text-xs text-red-600">{voiceError}</p>
         )}
         <p className="mt-1.5 text-center text-[11px] text-ink-soft">
-          Just the two of you — text & voice
+          Text, voice &amp; photos
         </p>
       </div>
+
+      </>
+      )}
 
       {/* Long-press react menu (Telegram-style) */}
       {reactMenuFor && (
@@ -2207,7 +2769,7 @@ export default function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-3 truncate text-center text-xs text-ink-soft">
-              {displayName(reactMenuFor.sender, names)}: {reactMenuFor.body}
+              {nameOf(reactMenuFor.sender)}: {reactMenuFor.body}
             </p>
             <div className="flex justify-around">
               {REACTION_EMOJIS.map((emoji) => (
@@ -2250,7 +2812,7 @@ export default function Home() {
                 <Copy className="mr-1.5 h-4 w-4" /> Copy text
               </button>
             )}
-            {reactMenuFor.sender === identity &&
+            {reactMenuFor.sender === myId &&
               reactMenuFor.kind === "text" && (
                 <button
                   type="button"
@@ -2280,50 +2842,24 @@ export default function Home() {
           <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-xl sm:rounded-3xl">
             <h2 className="text-lg font-bold text-ink">Settings</h2>
             <p className="mt-4 text-sm font-semibold text-ink-soft">
-              This phone is
+              Signed in as
             </p>
             <div className="mt-2 flex items-center justify-between rounded-xl bg-ice px-3 py-3">
-              <span className="flex items-center gap-1 text-sm font-bold text-ink">
-                {displayName(me, names)} (
-                {me === "kaung" ? "Person 1" : "Person 2"}){" "}
-                <Lock className="h-3.5 w-3.5" />
-              </span>
-              <span className="text-xs text-ink-soft">
-                Locked to this phone
+              <span className="min-w-0 text-sm font-bold text-ink">
+                {session.user.name}
+                <span className="block truncate text-xs font-semibold text-ink-soft">
+                  {session.user.email}
+                </span>
               </span>
             </div>
-            {!confirmResetIdentity ? (
-              <button
-                type="button"
-                onClick={() => setConfirmResetIdentity(true)}
-                className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-ink-soft"
-              >
-                Reset identity…
-              </button>
-            ) : (
-              <div className="mt-2 rounded-xl border border-line bg-ice p-3">
-                <p className="text-sm text-ink">
-                  This phone will ask who is using it again. Are you sure?
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmResetIdentity(false)}
-                    className="flex-1 rounded-xl bg-ice-deep px-4 py-2 text-sm font-bold text-ink"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetIdentity}
-                    className="flex-1 rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white"
-                  >
-                    Yes, reset
-                  </button>
-                </div>
-              </div>
-            )}
-            {/* Profile photo (mine — shown on the other phone's header) */}
+            <button
+              type="button"
+              onClick={() => void authClient.signOut()}
+              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-red-600"
+            >
+              Log out
+            </button>
+            {/* Profile photo (mine — shown to friends) */}
             <p className="mt-5 text-sm font-semibold text-ink-soft">
               My profile photo
             </p>
@@ -2399,55 +2935,127 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            {/* Together date (shared by both phones) */}
-            <label className="mt-5 block text-sm font-semibold text-ink-soft">
-              Together since
-              <input
-                type="date"
-                value={togetherSince ?? ""}
-                onChange={(e) => void saveTogetherDate(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
-              />
-            </label>
-            <p className="mt-1 text-xs text-ink-soft">
-              Shows a live day + time counter under the header. Tap the
-              counter to change the date.
-            </p>
-            <label className="mt-5 block text-sm font-semibold text-ink-soft">
-              Person 1&apos;s name
-              <input
-                value={draftNames.kaung}
-                onChange={(e) =>
-                  setDraftNames({ ...draftNames, kaung: e.target.value })
-                }
-                className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
-              />
-            </label>
-            <label className="mt-3 block text-sm font-semibold text-ink-soft">
-              Person 2&apos;s name
-              <input
-                value={draftNames.love}
-                onChange={(e) =>
-                  setDraftNames({ ...draftNames, love: e.target.value })
-                }
-                className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
-              />
-            </label>
-            <div className="mt-5 flex gap-2">
+            {/* Together date — only the couple's DM has one */}
+            {togetherSince !== null && (
+              <>
+                <label className="mt-5 block text-sm font-semibold text-ink-soft">
+                  Together since
+                  <input
+                    type="date"
+                    value={togetherSince ?? ""}
+                    onChange={(e) => void saveTogetherDate(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Shows a live day + time counter under the header. Tap the
+                  counter to change the date.
+                </p>
+              </>
+            )}
+            <div className="mt-5">
               <button
                 onClick={() => {
                   setShowSettings(false);
-                  setConfirmResetIdentity(false);
                 }}
-                className="flex-1 rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ink"
+                className="w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ink"
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New group modal */}
+      {showGroupCreate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
+          <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-xl sm:rounded-3xl">
+            <h2 className="text-lg font-bold text-ink">New group</h2>
+            <label className="mt-4 block text-sm font-semibold text-ink-soft">
+              Group name
+              <input
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="e.g. Weekend plan"
+                maxLength={100}
+                className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
+              />
+            </label>
+            <p className="mt-4 mb-2 text-sm font-semibold text-ink-soft">
+              Add friends ({groupPicked.length} picked)
+            </p>
+            {friends.length === 0 ? (
+              <p className="rounded-2xl bg-ice px-4 py-4 text-center text-sm text-ink-soft">
+                No friends yet — add friends first.
+              </p>
+            ) : (
+              <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">
+                {friends.map((u) => {
+                  const picked = groupPicked.includes(u.id);
+                  const avatar = avatarOf(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() =>
+                        setGroupPicked((prev) =>
+                          picked
+                            ? prev.filter((id) => id !== u.id)
+                            : [...prev, u.id],
+                        )
+                      }
+                      className={`flex items-center gap-3 rounded-2xl border-2 px-3 py-2.5 text-left ${
+                        picked ? "border-ocean bg-ice" : "border-transparent bg-ice"
+                      }`}
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-sm font-bold">
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-ink">
+                        {u.name}
+                      </span>
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                          picked
+                            ? "border-ocean bg-ocean text-white"
+                            : "border-line bg-card text-transparent"
+                        }`}
+                      >
+                        <Check className="h-4 w-4" />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="mt-5 flex gap-2">
               <button
-                onClick={saveNames}
-                className="flex-1 rounded-xl bg-ocean px-4 py-3 text-sm font-bold text-white"
+                onClick={() => {
+                  setShowGroupCreate(false);
+                  setGroupName("");
+                  setGroupPicked([]);
+                }}
+                className="flex-1 rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ink"
               >
-                Save
+                Cancel
+              </button>
+              <button
+                onClick={() => void createGroup()}
+                disabled={!groupName.trim() || groupPicked.length === 0}
+                className="flex-1 rounded-xl bg-ocean px-4 py-3 text-sm font-bold text-white disabled:opacity-40"
+              >
+                Create group
               </button>
             </div>
           </div>
