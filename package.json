@@ -13,8 +13,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
-  "description": "Real-time chat app for friends \u2014 1:1 chats and groups, with voice and photo messages. Next.js + Neon PostgreSQL, wrapped with Capacitor for Android APK sideload (no Play Store).",
+  "description": "Real-time chat app for friends — 1:1 chats and groups, with voice and photo messages. Next.js + Neon PostgreSQL, wrapped with Capacitor for Android APK sideload (no Play Store).",
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
     "@capacitor/cli": "^7.4.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
