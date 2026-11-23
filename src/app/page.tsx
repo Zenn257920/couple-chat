@@ -2723,7 +2723,7 @@ export default function Home() {
                 }
               }}
               rows={1}
-              placeholder={`Message ${roomTitle}…`}
+              placeholder="Message"
               maxLength={2000}
               className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-ice px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-soft focus:border-ocean"
             />
