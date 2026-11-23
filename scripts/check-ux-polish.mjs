@@ -32,7 +32,7 @@ const css = read("src/app/globals.css");
 const page = read("src/app/page.tsx");
 
 console.log("signup -> login:");
-check("sign-up calls authClient.signOut()", auth.includes("await authClient.signOut()"));
+check("autoSignIn is off in auth.ts (no session after signup)", /autoSignIn:\s*false/.test(read("src/lib/auth.ts")));
 check("success notice shown", auth.includes("Account created — please sign in."));
 check("switches to signin mode after signup", /setMode\("signin"\)/.test(auth));
 check("password cleared after signup", auth.includes('setPassword("")'));
