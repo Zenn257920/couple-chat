@@ -13,6 +13,7 @@ import {
   Copy,
   Heart,
   LoaderCircle,
+  MessageCircle,
   Mic,
   MoreVertical,
   PartyPopper,
@@ -21,14 +22,16 @@ import {
   Pencil,
   Plane,
   Play,
+  Plus,
   Reply,
   Search,
   Send,
+  Settings,
   Shapes,
   Smartphone,
   Smile,
   Square,
-  UserPlus,
+  User,
   Users,
   UtensilsCrossed,
   X,
@@ -259,6 +262,9 @@ export default function Home() {
   // True until the first room-list fetch finishes — the list shows
   // skeleton rows instead of the empty state meanwhile.
   const [roomsLoading, setRoomsLoading] = useState(true);
+  // Telegram-style list controls: search text + All Chats / Groups tab.
+  const [roomQuery, setRoomQuery] = useState("");
+  const [roomTab, setRoomTab] = useState<"all" | "groups">("all");
   const [activeRoom, setActiveRoom] = useState<RoomSummary | null>(null);
   // Friends screen (replaces the room list while open) + group
   // creation modal.
@@ -577,9 +583,11 @@ export default function Home() {
       const data = (await res.json()) as {
         rooms: RoomSummary[];
         users: RoomUser[];
+        presence?: Record<string, string | null>;
       };
       setRooms(data.rooms);
       mergeUsers(data.users);
+      if (data.presence) setPresence(data.presence);
     } catch {
       // The list just keeps its last good state.
     } finally {
@@ -590,6 +598,8 @@ export default function Home() {
   useEffect(() => {
     if (!session || activeRoom) return;
     void fetchRooms();
+    // The friends strip on the list needs the friends too.
+    void fetchFriends();
     const t = setInterval(() => void fetchRooms(), ROOMS_POLL_MS);
     return () => clearInterval(t);
   }, [session, activeRoom, fetchRooms]);
@@ -2028,47 +2038,156 @@ export default function Home() {
       : nameOf(otherId ?? "");
   const lastOwnRead = [...messages].reverse().find((m) => m.sender === myId);
 
+  // --- Room list derivations (Telegram-style list) ---
+  const groupCount = rooms.filter((r) => r.type === "group").length;
+  const totalUnread = rooms.reduce((n, r) => n + r.unread, 0);
+  const visibleRooms = rooms.filter((r) => {
+    if (roomTab === "groups" && r.type !== "group") return false;
+    const q = roomQuery.trim().toLowerCase();
+    if (q === "") return true;
+    const title =
+      r.type === "group"
+        ? (r.name ?? "Group")
+        : nameOf(
+            r.memberIds.find((id) => id !== myId) ?? "",
+          );
+    const lastBody = r.lastMessage?.body ?? "";
+    return (
+      title.toLowerCase().includes(q) || lastBody.toLowerCase().includes(q)
+    );
+  });
+
   // --- Room list screen (no room open) ---
   const roomListScreen = (
     <>
-      {/* Header */}
-      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
-        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-xl text-white">
-          {myPhoto ? (
-            <img src={myPhoto} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <Heart className="h-5 w-5 fill-white text-white" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-bold text-ink">We Talk</h1>
-          <p className="truncate text-xs text-ink-soft">
-            {session.user.name} • {rooms.length} chat
-            {rooms.length === 1 ? "" : "s"}
-          </p>
-        </div>
+      {/* Title row — Telegram-style, no header card */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-1">
+        <h1 className="text-2xl font-bold text-ink">We Talk</h1>
         <button
-          onClick={() => {
-            void fetchFriends();
-            setShowFriends(true);
-          }}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
-          aria-label="Friends"
-        >
-          <UserPlus className="h-5 w-5" />
-        </button>
-        <button
+          type="button"
           onClick={() => setShowSettings(true)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-card text-ocean shadow-sm transition active:scale-95"
           aria-label="Settings"
         >
           <MoreVertical className="h-5 w-5" />
         </button>
-      </header>
+      </div>
+
+      {/* Friends strip — tap a friend to open the DM. The gradient
+          ring marks online friends; hidden while searching. */}
+      {roomQuery === "" && friends.length > 0 && (
+        <div className="flex gap-3 overflow-x-auto px-4 pt-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {friends.map((u) => {
+            const avatar = avatarOf(u.id);
+            const online = isOnline(presence[u.id]);
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => void openDM(u.id)}
+                className="flex w-16 shrink-0 flex-col items-center gap-1"
+                aria-label={`Chat with ${u.name}`}
+              >
+                <div
+                  className={`rounded-full p-[3px] ${
+                    online
+                      ? "bg-gradient-to-br from-ocean-light via-ocean to-green-500"
+                      : "bg-ice-deep"
+                  }`}
+                >
+                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-ocean text-lg font-bold text-white ring-2 ring-ice">
+                    {avatar ? (
+                      <img
+                        src={avatar}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      u.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                </div>
+                <span className="w-full truncate text-center text-[11px] font-semibold text-ink-soft">
+                  {u.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search chats */}
+      <div className="px-4 pt-2">
+        <div className="flex items-center gap-2 rounded-xl bg-card px-3 py-2.5 shadow-sm">
+          <Search className="h-4 w-4 shrink-0 text-ink-soft" />
+          <input
+            value={roomQuery}
+            onChange={(e) => setRoomQuery(e.target.value)}
+            placeholder="Search chats"
+            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-soft"
+          />
+          {roomQuery !== "" && (
+            <button
+              type="button"
+              onClick={() => setRoomQuery("")}
+              aria-label="Clear search"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ink-soft"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Folder tabs — All Chats / Groups only, no Unread tab */}
+      <div className="flex gap-2 px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => setRoomTab("all")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold transition active:scale-95 ${
+            roomTab === "all" ? "bg-ocean text-white shadow-sm" : "text-ink-soft"
+          }`}
+        >
+          All Chats
+          {rooms.length > 0 && (
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] ${
+                roomTab === "all"
+                  ? "bg-ocean-deep text-white"
+                  : "bg-ice-deep text-ink-soft"
+              }`}
+            >
+              {rooms.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setRoomTab("groups")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold transition active:scale-95 ${
+            roomTab === "groups"
+              ? "bg-ocean text-white shadow-sm"
+              : "text-ink-soft"
+          }`}
+        >
+          Groups
+          {groupCount > 0 && (
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] ${
+                roomTab === "groups"
+                  ? "bg-ocean-deep text-white"
+                  : "bg-ice-deep text-ink-soft"
+              }`}
+            >
+              {groupCount}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Chats */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
           {roomsLoading && rooms.length === 0 ? (
             <div className="flex flex-col gap-2" aria-hidden>
               {[0, 1, 2, 3].map((i) => (
@@ -2084,27 +2203,33 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          ) : rooms.length === 0 ? (
+          ) : visibleRooms.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <Heart className="h-12 w-12 fill-ocean text-ocean" />
-              <p className="mt-4 text-lg font-bold text-ink">No chats yet</p>
-              <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-soft">
-                Add a friend to start chatting — 1:1 or in a group
+              <p className="mt-4 text-lg font-bold text-ink">
+                {rooms.length === 0 ? "No chats yet" : "No chats found"}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  void fetchFriends();
-                  setShowFriends(true);
-                }}
-                className="mt-5 rounded-2xl bg-ocean px-6 py-3 text-sm font-bold text-white shadow-md transition active:scale-[0.98]"
-              >
-                Find friends
-              </button>
+              <p className="mt-2 max-w-xs text-sm leading-relaxed text-ink-soft">
+                {rooms.length === 0
+                  ? "Add a friend to start chatting — 1:1 or in a group"
+                  : "Try a different search or tab"}
+              </p>
+              {rooms.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void fetchFriends();
+                    setShowFriends(true);
+                  }}
+                  className="mt-5 rounded-2xl bg-ocean px-6 py-3 text-sm font-bold text-white shadow-md transition active:scale-[0.98]"
+                >
+                  Find friends
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {rooms.map((r) => {
+              {visibleRooms.map((r) => {
                 const rIsGroup = r.type === "group";
                 const rOtherId = rIsGroup
                   ? null
@@ -2192,7 +2317,8 @@ export default function Home() {
             </div>
           )}
         </div>
-        <div className="mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* Bottom nav + new-group FAB (Telegram-style) */}
+        <div className="relative mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={() => {
@@ -2200,10 +2326,68 @@ export default function Home() {
               setShowFriends(true);
               setShowGroupCreate(true);
             }}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ocean px-6 py-3.5 text-sm font-bold text-white shadow-md transition active:scale-[0.98]"
+            className="absolute -top-6 right-3 flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-ocean text-white shadow-lg transition active:scale-95"
+            aria-label="New group"
           >
-            <Users className="h-4 w-4" /> New group
+            <Plus className="h-6 w-6" />
           </button>
+          <nav className="flex items-center justify-around rounded-2xl bg-card px-2 py-2 shadow-lg">
+            <button
+              type="button"
+              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ocean"
+              aria-label="Chats"
+            >
+              <span className="relative">
+                <MessageCircle className="h-5 w-5" />
+                {totalUnread > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ocean px-1 text-[10px] font-bold text-white">
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                )}
+              </span>
+              Chats
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void fetchFriends();
+                setShowFriends(true);
+              }}
+              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
+              aria-label="Friends"
+            >
+              <Users className="h-5 w-5" />
+              Friends
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
+              aria-label="Settings"
+            >
+              <Settings className="h-5 w-5" />
+              Settings
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
+              aria-label="Profile"
+            >
+              {myPhoto ? (
+                <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-ocean">
+                  <img
+                    src={myPhoto}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+              ) : (
+                <User className="h-5 w-5" />
+              )}
+              Profile
+            </button>
+          </nav>
         </div>
       </div>
     </>
