@@ -40,7 +40,7 @@ check("NO Unread tab", !page.includes("Unread") || !/>\s*Unread\s*</.test(page))
 check("no-match empty state", page.includes("No chats found"));
 
 console.log("bottom nav + FAB:");
-check("bottom nav: Chats / Friends / Settings / Profile", page.includes('aria-label="Chats"') && page.includes('aria-label="Friends"') && page.includes('aria-label="Settings"') && page.includes('aria-label="Profile"'));
+check("bottom nav: Chats / Friends / Settings / Profile", page.includes('"chats",') && page.includes('"friends",') && page.includes('"settings",') && page.includes('"profile",') && page.includes('aria-label={label}'));
 check("Chats tab shows total unread badge", page.includes("totalUnread"));
 check("FAB opens group creation", page.includes('aria-label="New group"') && page.includes("setShowGroupCreate(true)"));
 check("old full-width New group button gone", !page.includes("New group\n"));

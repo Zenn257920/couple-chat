@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { VoiceRecorder } from "capacitor-voice-recorder";
 import { App } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
@@ -299,6 +299,9 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  // Profile + Add Friend are their own pages, like Settings.
+  const [showProfile, setShowProfile] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [emojiTab, setEmojiTab] = useState(0);
   // Message the user is replying to (Telegram-style quote).
@@ -393,6 +396,10 @@ export default function Home() {
   showFriendsRef.current = showFriends;
   const showSettingsRef = useRef(false);
   showSettingsRef.current = showSettings;
+  const showProfileRef = useRef(false);
+  showProfileRef.current = showProfile;
+  const showAddFriendRef = useRef(false);
+  showAddFriendRef.current = showAddFriend;
   const showGroupCreateRef = useRef(false);
   showGroupCreateRef.current = showGroupCreate;
   const showEmojiRef = useRef(false);
@@ -1001,6 +1008,9 @@ export default function Home() {
     hydratedRef.current = false;
     lastNotifiedId.current = 0;
     setShowFriends(false);
+    setShowSettings(false);
+    setShowProfile(false);
+    setShowAddFriend(false);
     setShowGroupCreate(false);
     setActiveRoom(room);
   }
@@ -1012,16 +1022,12 @@ export default function Home() {
   }
 
   // Android system back button: close the topmost layer first (emoji
-  // panel, settings, new-group modal, chat room, friends screen); on
-  // the room list itself, exit the app. Without this the system back
-  // button exits the app from everywhere — even from a chat room.
+  // panel, new-group modal, chat room, add-friend page, nav pages);
+  // on the room list itself, exit the app. Without this the system
+  // back button exits the app from everywhere — even from a chat room.
   backHandlerRef.current = () => {
     if (showEmojiRef.current) {
       setShowEmoji(false);
-      return;
-    }
-    if (showSettingsRef.current) {
-      setShowSettings(false);
       return;
     }
     if (showGroupCreateRef.current) {
@@ -1034,8 +1040,20 @@ export default function Home() {
       exitRoom();
       return;
     }
-    if (showFriendsRef.current) {
+    if (showAddFriendRef.current) {
+      setShowAddFriend(false);
+      setSearchQuery("");
+      setSearchResults([]);
+      return;
+    }
+    if (
+      showFriendsRef.current ||
+      showSettingsRef.current ||
+      showProfileRef.current
+    ) {
       setShowFriends(false);
+      setShowSettings(false);
+      setShowProfile(false);
       setSearchQuery("");
       setSearchResults([]);
       return;
@@ -2057,6 +2075,92 @@ export default function Home() {
     );
   });
 
+  // --- Bottom nav (Telegram-style tabs) ---
+  // One shared nav bar for every nav page: Chats / Friends /
+  // Settings / Profile. The active tab gets an ocean pill so it is
+  // obvious which page you are on. The + FAB (new group) only rides
+  // on the Chats list, floating above the nav — never covering it.
+  function goTab(tab: "chats" | "friends" | "settings" | "profile") {
+    setShowFriends(tab === "friends");
+    setShowAddFriend(false);
+    setShowSettings(tab === "settings");
+    setShowProfile(tab === "profile");
+    setSearchQuery("");
+    setSearchResults([]);
+  }
+
+  function bottomNav(
+    active: "chats" | "friends" | "settings" | "profile",
+    showFab = false,
+  ) {
+    const item = (
+      tab: "chats" | "friends" | "settings" | "profile",
+      label: string,
+      icon: ReactNode,
+    ) => (
+      <button
+        type="button"
+        onClick={() => goTab(tab)}
+        className={`flex flex-col items-center gap-0.5 rounded-xl px-3 py-1 text-[11px] font-bold transition active:scale-95 ${
+          active === tab ? "bg-ice-deep text-ocean" : "text-ink-soft"
+        }`}
+        aria-label={label}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+    return (
+      <div className="relative mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {showFab && (
+          <button
+            type="button"
+            onClick={() => {
+              void fetchFriends();
+              setShowFriends(true);
+              setShowGroupCreate(true);
+            }}
+            className="absolute -top-[4.75rem] right-4 flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-ocean text-white shadow-lg transition active:scale-95"
+            aria-label="New group"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        )}
+        <nav className="flex items-center justify-around rounded-2xl bg-card px-2 py-2 shadow-lg">
+          {item(
+            "chats",
+            "Chats",
+            <span className="relative">
+              <MessageCircle className="h-5 w-5" />
+              {totalUnread > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ocean px-1 text-[10px] font-bold text-white">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              )}
+            </span>,
+          )}
+          {item("friends", "Friends", <Users className="h-5 w-5" />)}
+          {item("settings", "Settings", <Settings className="h-5 w-5" />)}
+          {item(
+            "profile",
+            "Profile",
+            myPhoto ? (
+              <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-ocean">
+                <img
+                  src={myPhoto}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </span>
+            ) : (
+              <User className="h-5 w-5" />
+            ),
+          )}
+        </nav>
+      </div>
+    );
+  }
+
   // --- Room list screen (no room open) ---
   const roomListScreen = (
     <>
@@ -2187,7 +2291,7 @@ export default function Home() {
 
       {/* Chats */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-8">
+        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-20">
           {roomsLoading && rooms.length === 0 ? (
             <div className="flex flex-col gap-2" aria-hidden>
               {[0, 1, 2, 3].map((i) => (
@@ -2317,78 +2421,8 @@ export default function Home() {
             </div>
           )}
         </div>
-        {/* Bottom nav + new-group FAB (Telegram-style) */}
-        <div className="relative mx-4 mb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button
-            type="button"
-            onClick={() => {
-              void fetchFriends();
-              setShowFriends(true);
-              setShowGroupCreate(true);
-            }}
-            className="absolute -top-6 right-3 flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-ocean text-white shadow-lg transition active:scale-95"
-            aria-label="New group"
-          >
-            <Plus className="h-6 w-6" />
-          </button>
-          <nav className="flex items-center justify-around rounded-2xl bg-card px-2 py-2 shadow-lg">
-            <button
-              type="button"
-              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ocean"
-              aria-label="Chats"
-            >
-              <span className="relative">
-                <MessageCircle className="h-5 w-5" />
-                {totalUnread > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ocean px-1 text-[10px] font-bold text-white">
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </span>
-                )}
-              </span>
-              Chats
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void fetchFriends();
-                setShowFriends(true);
-              }}
-              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
-              aria-label="Friends"
-            >
-              <Users className="h-5 w-5" />
-              Friends
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
-              aria-label="Settings"
-            >
-              <Settings className="h-5 w-5" />
-              Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-bold text-ink-soft"
-              aria-label="Profile"
-            >
-              {myPhoto ? (
-                <span className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-ocean">
-                  <img
-                    src={myPhoto}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                </span>
-              ) : (
-                <User className="h-5 w-5" />
-              )}
-              Profile
-            </button>
-          </nav>
-        </div>
+        {/* Bottom nav — the + FAB floats above it, clear of every tab */}
+        {bottomNav("chats", true)}
       </div>
     </>
   );
@@ -2413,6 +2447,185 @@ export default function Home() {
           <h1 className="truncate text-base font-bold text-ink">Friends</h1>
           <p className="truncate text-xs text-ink-soft">
             Only friends can message each other
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddFriend(true)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ocean text-white shadow-sm transition active:scale-95"
+          aria-label="Add friend"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {/* Incoming requests */}
+          {incoming.length > 0 && (
+            <>
+              <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
+                Friend requests
+              </p>
+              <div className="flex flex-col gap-2">
+                {incoming.map((u) => {
+                  const avatar = avatarOf(u.id);
+                  return (
+                    <div
+                      key={u.id}
+                      className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-base font-bold">
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-bold text-ink">
+                          {u.name}
+                        </p>
+                        <p className="truncate text-xs text-ink-soft">
+                          {u.email}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void respondRequest(u.id, true)}
+                        className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void respondRequest(u.id, false)}
+                        className="shrink-0 rounded-xl bg-ice-deep px-3 py-2 text-sm font-bold text-ink-soft"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Friends list — tap to open the DM */}
+          <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
+            My friends ({friends.length})
+          </p>
+          {friendsLoading && friends.length === 0 ? (
+            <div className="flex flex-col gap-2" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                >
+                  <div className="skeleton h-11 w-11 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton h-4 w-2/5 rounded" />
+                    <div className="skeleton mt-2 h-3 w-3/5 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : friends.length === 0 ? (
+            <p className="rounded-2xl bg-card px-4 py-4 text-center text-sm text-ink-soft shadow-sm">
+              No friends yet — tap + above to add someone.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {friends.map((u) => {
+                const avatar = avatarOf(u.id);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => void openDM(u.id)}
+                    className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
+                  >
+                    <div className="relative h-11 w-11 shrink-0">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-base font-bold">
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      {/* Presence dot: sibling of the clipped avatar,
+                          not a child — inside overflow-hidden it gets
+                          cut off. */}
+                      <span
+                        className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-white ${
+                          isOnline(presence[u.id])
+                            ? "bg-green-500"
+                            : "bg-gray-400"
+                        }`}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-bold text-ink">
+                        {u.name}
+                      </p>
+                      <p className="truncate text-xs text-ink-soft">
+                        {isOnline(presence[u.id])
+                          ? "Online"
+                          : formatLastSeen(presence[u.id]) || u.email}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-ocean">
+                      Chat →
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {outgoing.length > 0 && (
+            <p className="mt-4 text-center text-xs text-ink-soft">
+              {outgoing.length} request{outgoing.length === 1 ? "" : "s"}{" "}
+              waiting for a reply
+            </p>
+          )}
+        </div>
+      </div>
+      {bottomNav("friends")}
+    </>
+  );
+
+  // --- Add Friend screen (sub-page of Friends) ---
+  const addFriendScreen = (
+    <>
+      <header className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-lg">
+        <button
+          onClick={() => {
+            setShowAddFriend(false);
+            setSearchQuery("");
+            setSearchResults([]);
+          }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
+          aria-label="Back to friends"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-bold text-ink">Add friend</h1>
+          <p className="truncate text-xs text-ink-soft">
+            Search people, send a request
           </p>
         </div>
       </header>
@@ -2499,149 +2712,145 @@ export default function Home() {
               })}
             </div>
           )}
-
-          {/* Incoming requests */}
-          {incoming.length > 0 && (
-            <>
-              <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
-                Friend requests
-              </p>
-              <div className="flex flex-col gap-2">
-                {incoming.map((u) => {
-                  const avatar = avatarOf(u.id);
-                  return (
-                    <div
-                      key={u.id}
-                      className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
-                    >
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
-                        {avatar ? (
-                          <img
-                            src={avatar}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-base font-bold">
-                            {u.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[15px] font-bold text-ink">
-                          {u.name}
-                        </p>
-                        <p className="truncate text-xs text-ink-soft">
-                          {u.email}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void respondRequest(u.id, true)}
-                        className="shrink-0 rounded-xl bg-ocean px-3 py-2 text-sm font-bold text-white"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void respondRequest(u.id, false)}
-                        className="shrink-0 rounded-xl bg-ice-deep px-3 py-2 text-sm font-bold text-ink-soft"
-                      >
-                        Decline
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {/* Friends list — tap to open the DM */}
-          <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
-            My friends ({friends.length})
-          </p>
-          {friendsLoading && friends.length === 0 ? (
-            <div className="flex flex-col gap-2" aria-hidden>
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
-                >
-                  <div className="skeleton h-11 w-11 shrink-0 rounded-full" />
-                  <div className="min-w-0 flex-1">
-                    <div className="skeleton h-4 w-2/5 rounded" />
-                    <div className="skeleton mt-2 h-3 w-3/5 rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : friends.length === 0 ? (
-            <p className="rounded-2xl bg-card px-4 py-4 text-center text-sm text-ink-soft shadow-sm">
-              No friends yet — search above to add someone.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {friends.map((u) => {
-                const avatar = avatarOf(u.id);
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => void openDM(u.id)}
-                    className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
-                  >
-                    <div className="relative h-11 w-11 shrink-0">
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
-                        {avatar ? (
-                          <img
-                            src={avatar}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-base font-bold">
-                            {u.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      {/* Presence dot: sibling of the clipped avatar,
-                          not a child — inside overflow-hidden it gets
-                          cut off. */}
-                      <span
-                        className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-white ${
-                          isOnline(presence[u.id])
-                            ? "bg-green-500"
-                            : "bg-gray-400"
-                        }`}
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px] font-bold text-ink">
-                        {u.name}
-                      </p>
-                      <p className="truncate text-xs text-ink-soft">
-                        {isOnline(presence[u.id])
-                          ? "Online"
-                          : formatLastSeen(presence[u.id]) || u.email}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-sm font-bold text-ocean">
-                      Chat →
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {outgoing.length > 0 && (
-            <p className="mt-4 text-center text-xs text-ink-soft">
-              {outgoing.length} request{outgoing.length === 1 ? "" : "s"}{" "}
-              waiting for a reply
-            </p>
-          )}
         </div>
       </div>
+      {bottomNav("friends")}
+    </>
+  );
+
+  // --- Settings screen (settings features only) ---
+  const settingsScreen = (
+    <>
+      <div className="flex items-center justify-between px-4 pt-4 pb-1">
+        <h1 className="text-2xl font-bold text-ink">Settings</h1>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {/* Chat wallpaper (per phone) */}
+          <p className="mb-2 text-sm font-semibold text-ink-soft">
+            Chat wallpaper
+          </p>
+          <div className="grid grid-cols-6 gap-2 rounded-2xl bg-card p-3 shadow-sm">
+            {Object.entries(WALLPAPERS).map(([id, w]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setWallpaper(id);
+                  try {
+                    localStorage.setItem(WALLPAPER_KEY, id);
+                  } catch {
+                    // Storage unavailable — the choice just won't persist.
+                  }
+                }}
+                className={`flex h-10 items-center justify-center rounded-xl border-2 text-xs font-bold ${
+                  wallpaper === id ? "border-ocean" : "border-transparent"
+                } ${id === "default" ? "chat-bg" : ""}`}
+                style={id === "default" ? undefined : w.style}
+                aria-label={w.label}
+                title={w.label}
+              >
+                {id === "default" ? "✿" : ""}
+              </button>
+            ))}
+          </div>
+          {/* Together date — only the couple's DM has one */}
+          {togetherSince !== null && (
+            <>
+              <label className="mt-5 block text-sm font-semibold text-ink-soft">
+                Together since
+                <input
+                  type="date"
+                  value={togetherSince ?? ""}
+                  onChange={(e) => void saveTogetherDate(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
+                />
+              </label>
+              <p className="mt-1 text-xs text-ink-soft">
+                Shows a live day + time counter under the header. Tap the
+                counter to change the date.
+              </p>
+            </>
+          )}
+          <p className="mt-5 mb-2 text-sm font-semibold text-ink-soft">
+            Account
+          </p>
+          <button
+            type="button"
+            onClick={() => void authClient.signOut()}
+            className="w-full rounded-2xl bg-card px-4 py-3 text-sm font-bold text-red-600 shadow-sm"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+      {bottomNav("settings")}
+    </>
+  );
+
+  // --- Profile screen (my profile only) ---
+  const profileScreen = (
+    <>
+      <div className="flex items-center justify-between px-4 pt-4 pb-1">
+        <h1 className="text-2xl font-bold text-ink">Profile</h1>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex flex-col items-center rounded-2xl bg-card px-4 py-6 text-center shadow-sm">
+            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-4xl text-white">
+              {myPhoto ? (
+                <img
+                  src={myPhoto}
+                  alt="My profile photo"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Heart className="h-10 w-10 fill-white text-white" />
+              )}
+            </div>
+            <p className="mt-3 text-lg font-bold text-ink">
+              {session.user.name}
+            </p>
+            <p className="truncate text-sm text-ink-soft">
+              {session.user.email}
+            </p>
+            <div className="mt-4 flex w-full flex-col gap-2">
+              <button
+                type="button"
+                disabled={photoUploading}
+                onClick={() => photoInputRef.current?.click()}
+                className="rounded-xl bg-ice-deep px-4 py-2.5 text-sm font-bold text-ocean disabled:opacity-50"
+              >
+                {photoUploading
+                  ? "Uploading…"
+                  : myPhoto
+                    ? "Change photo"
+                    : "Upload a photo"}
+              </button>
+              {myPhoto && (
+                <button
+                  type="button"
+                  disabled={photoUploading}
+                  onClick={() => void removePhoto()}
+                  className="rounded-xl px-4 py-2 text-sm font-semibold text-red-600 disabled:opacity-50"
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => void onPhotoFile(e)}
+            />
+          </div>
+        </div>
+      </div>
+      {bottomNav("profile")}
     </>
   );
 
@@ -2654,8 +2863,14 @@ export default function Home() {
       }}
     >
       {!room ? (
-        showFriends ? (
+        showAddFriend ? (
+          addFriendScreen
+        ) : showFriends ? (
           friendsScreen
+        ) : showSettings ? (
+          settingsScreen
+        ) : showProfile ? (
+          profileScreen
         ) : (
           roomListScreen
         )
@@ -2727,6 +2942,8 @@ export default function Home() {
             <button
               type="button"
               onClick={() => {
+                // Settings is a page now, so leave the room first.
+                exitRoom();
                 setShowSettings(true);
               }}
               className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-ocean"
@@ -2738,6 +2955,8 @@ export default function Home() {
         </div>
         <button
           onClick={() => {
+            // Settings is a page now, so leave the room first.
+            exitRoom();
             setShowSettings(true);
           }}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ice-deep text-ocean transition active:scale-95"
@@ -2756,7 +2975,6 @@ export default function Home() {
           ref={listRef}
           className="flex-1 overflow-y-auto px-4 py-4"
           onClick={() => {
-            if (showSettings) setShowSettings(false);
             if (showEmoji) setShowEmoji(false);
           }}
           onScroll={() => {
@@ -3180,137 +3398,6 @@ export default function Home() {
             >
               Cancel
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Settings sheet */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-card p-5 shadow-xl sm:rounded-3xl">
-            <h2 className="text-lg font-bold text-ink">Settings</h2>
-            <p className="mt-4 text-sm font-semibold text-ink-soft">
-              Signed in as
-            </p>
-            <div className="mt-2 flex items-center justify-between rounded-xl bg-ice px-3 py-3">
-              <span className="min-w-0 text-sm font-bold text-ink">
-                {session.user.name}
-                <span className="block truncate text-xs font-semibold text-ink-soft">
-                  {session.user.email}
-                </span>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => void authClient.signOut()}
-              className="mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-red-600"
-            >
-              Log out
-            </button>
-            {/* Profile photo (mine — shown to friends) */}
-            <p className="mt-5 text-sm font-semibold text-ink-soft">
-              My profile photo
-            </p>
-            <div className="mt-2 flex items-center gap-3">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-2xl text-white">
-                {myPhoto ? (
-                  <img
-                    src={myPhoto}
-                    alt="My profile photo"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <Heart className="h-6 w-6 fill-white text-white" />
-                )}
-              </div>
-              <div className="flex flex-1 flex-col gap-2">
-                <button
-                  type="button"
-                  disabled={photoUploading}
-                  onClick={() => photoInputRef.current?.click()}
-                  className="rounded-xl bg-ice-deep px-4 py-2.5 text-sm font-bold text-ocean disabled:opacity-50"
-                >
-                  {photoUploading
-                    ? "Uploading…"
-                    : myPhoto
-                      ? "Change photo"
-                      : "Upload a photo"}
-                </button>
-                {myPhoto && (
-                  <button
-                    type="button"
-                    disabled={photoUploading}
-                    onClick={() => void removePhoto()}
-                    className="rounded-xl px-4 py-2 text-sm font-semibold text-red-600 disabled:opacity-50"
-                  >
-                    Remove photo
-                  </button>
-                )}
-              </div>
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => void onPhotoFile(e)}
-              />
-            </div>
-            {/* Chat wallpaper (per phone) */}
-            <p className="mt-5 text-sm font-semibold text-ink-soft">
-              Chat wallpaper
-            </p>
-            <div className="mt-2 grid grid-cols-6 gap-2">
-              {Object.entries(WALLPAPERS).map(([id, w]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setWallpaper(id);
-                    try {
-                      localStorage.setItem(WALLPAPER_KEY, id);
-                    } catch {
-                      // Storage unavailable — the choice just won't persist.
-                    }
-                  }}
-                  className={`flex h-10 items-center justify-center rounded-xl border-2 text-xs font-bold ${
-                    wallpaper === id ? "border-ocean" : "border-transparent"
-                  } ${id === "default" ? "chat-bg" : ""}`}
-                  style={id === "default" ? undefined : w.style}
-                  aria-label={w.label}
-                  title={w.label}
-                >
-                  {id === "default" ? "✿" : ""}
-                </button>
-              ))}
-            </div>
-            {/* Together date — only the couple's DM has one */}
-            {togetherSince !== null && (
-              <>
-                <label className="mt-5 block text-sm font-semibold text-ink-soft">
-                  Together since
-                  <input
-                    type="date"
-                    value={togetherSince ?? ""}
-                    onChange={(e) => void saveTogetherDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-line bg-ice px-3 py-2.5 text-ink outline-none focus:border-ocean"
-                  />
-                </label>
-                <p className="mt-1 text-xs text-ink-soft">
-                  Shows a live day + time counter under the header. Tap the
-                  counter to change the date.
-                </p>
-              </>
-            )}
-            <div className="mt-5">
-              <button
-                onClick={() => {
-                  setShowSettings(false);
-                }}
-                className="w-full rounded-xl bg-ice-deep px-4 py-3 text-sm font-bold text-ink"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}
