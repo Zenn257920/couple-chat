@@ -38,6 +38,7 @@ import { REACTION_EMOJIS } from "@/lib/reactions";
 import type { ChatMessage, RoomSummary, RoomUser } from "@/lib/db";
 import { authClient } from "@/lib/auth-client";
 import AuthScreen from "@/components/AuthScreen";
+import Logo from "@/components/Logo";
 
 const POLL_MS = 1500;
 const ROOMS_POLL_MS = 3000;
@@ -250,13 +251,22 @@ export default function Home() {
   // The signed-in user's id — the identity everywhere now.
   const myId = session?.user.id ?? null;
   const [ready, setReady] = useState(false);
+  // Splash screen stays up at least this long, so app entry shows
+  // the logo instead of flashing past it.
+  const [splashMinDone, setSplashMinDone] = useState(false);
   // Rooms (DMs + groups) and the open room. null = room list.
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  // True until the first room-list fetch finishes — the list shows
+  // skeleton rows instead of the empty state meanwhile.
+  const [roomsLoading, setRoomsLoading] = useState(true);
   const [activeRoom, setActiveRoom] = useState<RoomSummary | null>(null);
   // Friends screen (replaces the room list while open) + group
   // creation modal.
   const [showFriends, setShowFriends] = useState(false);
   const [friends, setFriends] = useState<RoomUser[]>([]);
+  // True while the friends list is (re)loading — skeleton rows show
+  // instead of the "no friends yet" card meanwhile.
+  const [friendsLoading, setFriendsLoading] = useState(false);
   const [incoming, setIncoming] = useState<RoomUser[]>([]);
   const [outgoing, setOutgoing] = useState<RoomUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -269,6 +279,9 @@ export default function Home() {
   // name, email, Google avatar, uploaded profile photo.
   const [usersById, setUsersById] = useState<Record<string, RoomUser>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // True while a room's first message fetch is in flight — the room
+  // shows skeleton bubbles instead of the "say hi" empty state.
+  const [msgsLoading, setMsgsLoading] = useState(false);
   const [typingFrom, setTypingFrom] = useState<string | null>(null);
   const [input, setInput] = useState("");
   // Height of the visible area while the on-screen keyboard is open
@@ -388,6 +401,12 @@ export default function Home() {
     setWallpaper(loadWallpaper());
     setRecentEmojis(loadRecentEmojis());
     setReady(true);
+  }, []);
+
+  // Splash screen minimum display, so the logo is actually seen.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSplashMinDone(true), 900);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Helpers: display name + avatar for any user id. Unknown ids
@@ -512,6 +531,8 @@ export default function Home() {
     } catch {
       setConnected(false);
       setLoadError("No internet connection yet — retrying…");
+    } finally {
+      setMsgsLoading(false);
     }
   }, [scrollToBottom]);
 
@@ -519,6 +540,7 @@ export default function Home() {
   // room is open.
   useEffect(() => {
     if (!activeRoom) return;
+    setMsgsLoading(true);
     void fetchState();
     const t = setInterval(() => void fetchState(), POLL_MS);
     return () => clearInterval(t);
@@ -560,6 +582,8 @@ export default function Home() {
       mergeUsers(data.users);
     } catch {
       // The list just keeps its last good state.
+    } finally {
+      setRoomsLoading(false);
     }
   }, []);
 
@@ -1036,6 +1060,7 @@ export default function Home() {
   }
 
   async function fetchFriends() {
+    setFriendsLoading(true);
     try {
       const res = await fetch("/api/friends", { cache: "no-store" });
       if (!res.ok) return;
@@ -1050,6 +1075,8 @@ export default function Home() {
       mergeUsers([...data.friends, ...data.incoming, ...data.outgoing]);
     } catch {
       // Friends just keep their last good state.
+    } finally {
+      setFriendsLoading(false);
     }
   }
 
@@ -1956,12 +1983,23 @@ export default function Home() {
     }
   }
 
-  if (!ready || sessionPending) {
+  // App entry: branded splash (W logo + loading dots) while the
+  // session is being checked, at least ~0.9s so the logo is seen.
+  if (!ready || sessionPending || !splashMinDone) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-ice">
-        <p className="flex items-center gap-1.5 text-ink-soft">
-          Loading… <Heart className="h-4 w-4 fill-current text-ocean" />
-        </p>
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-ice px-6">
+        <div className="fade-up flex flex-col items-center">
+          <Logo className="h-24 w-24 drop-shadow-xl" />
+          <h1 className="mt-5 text-2xl font-bold text-ink">We Talk</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            Chat with your friends
+          </p>
+          <div className="mt-6 flex items-center gap-1.5" aria-hidden>
+            <span className="typing-dot h-2 w-2 rounded-full bg-ocean" />
+            <span className="typing-dot h-2 w-2 rounded-full bg-ocean" />
+            <span className="typing-dot h-2 w-2 rounded-full bg-ocean" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -2031,7 +2069,22 @@ export default function Home() {
       {/* Chats */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {rooms.length === 0 ? (
+          {roomsLoading && rooms.length === 0 ? (
+            <div className="flex flex-col gap-2" aria-hidden>
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                >
+                  <div className="skeleton h-12 w-12 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton h-4 w-2/5 rounded" />
+                    <div className="skeleton mt-2 h-3 w-4/5 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : rooms.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <Heart className="h-12 w-12 fill-ocean text-ocean" />
               <p className="mt-4 text-lg font-bold text-ink">No chats yet</p>
@@ -2323,7 +2376,22 @@ export default function Home() {
           <p className="mt-5 mb-2 text-sm font-bold text-ink-soft">
             My friends ({friends.length})
           </p>
-          {friends.length === 0 ? (
+          {friendsLoading && friends.length === 0 ? (
+            <div className="flex flex-col gap-2" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 shadow-sm"
+                >
+                  <div className="skeleton h-11 w-11 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton h-4 w-2/5 rounded" />
+                    <div className="skeleton mt-2 h-3 w-3/5 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : friends.length === 0 ? (
             <p className="rounded-2xl bg-card px-4 py-4 text-center text-sm text-ink-soft shadow-sm">
               No friends yet — search above to add someone.
             </p>
@@ -2516,7 +2584,24 @@ export default function Home() {
             if (nearBottom) setNewWhileAway(0);
           }}
         >
-        {messages.length === 0 ? (
+        {msgsLoading && messages.length === 0 ? (
+          <div className="flex flex-col gap-3" aria-hidden>
+            <div className="flex items-end gap-2">
+              <div className="skeleton h-8 w-8 shrink-0 rounded-full" />
+              <div className="skeleton h-12 w-3/5 rounded-2xl" />
+            </div>
+            <div className="flex justify-end">
+              <div className="skeleton h-10 w-1/2 rounded-2xl" />
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="skeleton h-8 w-8 shrink-0 rounded-full" />
+              <div className="skeleton h-16 w-2/3 rounded-2xl" />
+            </div>
+            <div className="flex justify-end">
+              <div className="skeleton h-10 w-2/5 rounded-2xl" />
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <Heart className="h-12 w-12 fill-ocean text-ocean" />
             <p className="mt-4 text-lg font-bold text-ink">Hello</p>

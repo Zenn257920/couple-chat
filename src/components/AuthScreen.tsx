@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Heart, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import Logo from "@/components/Logo";
 
 // Sign in / sign up screen — shown when there is no session. The
 // chat itself is friends-only, so every user needs an account.
@@ -16,6 +17,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
 
@@ -29,6 +31,7 @@ export default function AuthScreen() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setNotice("");
     setBusy(true);
     try {
       if (mode === "signup") {
@@ -38,13 +41,20 @@ export default function AuthScreen() {
           password,
         });
         if (error) throw new Error(error.message || "Sign up failed");
-      } else {
-        const { error } = await authClient.signIn.email({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw new Error(error.message || "Sign in failed");
+        // Better Auth signs the new account straight in — sign back
+        // out so creating an account does NOT drop the user into the
+        // app. They sign in explicitly, with their email prefilled.
+        await authClient.signOut();
+        setNotice("Account created — please sign in.");
+        setMode("signin");
+        setPassword("");
+        return;
       }
+      const { error } = await authClient.signIn.email({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw new Error(error.message || "Sign in failed");
       // Success: useSession in the page picks up the new session and
       // the chat appears — no navigation needed.
     } catch (err) {
@@ -72,9 +82,7 @@ export default function AuthScreen() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-ice px-6">
       <div className="fade-up flex w-full max-w-sm flex-col items-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-ocean shadow-lg">
-          <Heart className="h-9 w-9 fill-white text-white" />
-        </div>
+        <Logo className="h-20 w-20 drop-shadow-lg" />
         <h1 className="mt-6 text-2xl font-bold text-ink">We Talk</h1>
         <p className="mt-2 text-center text-sm leading-relaxed text-ink-soft">
           Chat with your friends, one-to-one or in groups.
@@ -136,6 +144,11 @@ export default function AuthScreen() {
               className="mt-1 w-full rounded-xl border border-line bg-card px-3 py-2.5 text-ink outline-none focus:border-ocean"
             />
           </label>
+          {notice && (
+            <p className="mt-3 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700">
+              {notice}
+            </p>
+          )}
           {error && (
             <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">
               {error}
@@ -156,6 +169,7 @@ export default function AuthScreen() {
           onClick={() => {
             setMode(mode === "signup" ? "signin" : "signup");
             setError("");
+            setNotice("");
           }}
           className="mt-4 text-sm font-semibold text-ocean"
         >
