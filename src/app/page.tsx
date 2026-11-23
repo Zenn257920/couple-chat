@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoiceRecorder } from "capacitor-voice-recorder";
+import { App } from "@capacitor/app";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import {
   ArrowLeft,
   Camera,
@@ -366,6 +368,20 @@ export default function Home() {
   myIdRef.current = session?.user.id ?? null;
   const activeRoomRef = useRef<RoomSummary | null>(null);
   activeRoomRef.current = activeRoom;
+  // Ref mirrors for the Android back button (registered once below):
+  // the native listener must read current state, not a stale closure.
+  const showFriendsRef = useRef(false);
+  showFriendsRef.current = showFriends;
+  const showSettingsRef = useRef(false);
+  showSettingsRef.current = showSettings;
+  const showGroupCreateRef = useRef(false);
+  showGroupCreateRef.current = showGroupCreate;
+  const showEmojiRef = useRef(false);
+  showEmojiRef.current = showEmoji;
+  // Always-fresh back-button handler — assigned every render (after
+  // exitRoom is defined) so the once-registered native listener calls
+  // the latest close functions.
+  const backHandlerRef = useRef<() => void>(() => {});
 
   // Load per-phone settings (wallpaper, recent emojis) on first open.
   useEffect(() => {
@@ -559,6 +575,23 @@ export default function Home() {
   useEffect(() => {
     setTogetherSince(activeRoom?.together_since ?? null);
   }, [activeRoom]);
+
+  // Android system back button (Capacitor App plugin, native only).
+  // Registered once; backHandlerRef above always points at the latest
+  // close logic, so back walks home one layer at a time instead of
+  // killing the app from a chat room.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let handle: PluginListenerHandle | undefined;
+    App.addListener("backButton", () => {
+      backHandlerRef.current();
+    }).then((h) => {
+      handle = h;
+    });
+    return () => {
+      void handle?.remove();
+    };
+  }, []);
 
   // Tick the Together counter once a second (only while a date is
   // set — the message list is memoized, so this re-render is cheap).
@@ -943,6 +976,38 @@ export default function Home() {
     setMessages([]);
     void fetchRooms();
   }
+
+  // Android system back button: close the topmost layer first (emoji
+  // panel, settings, new-group modal, chat room, friends screen); on
+  // the room list itself, exit the app. Without this the system back
+  // button exits the app from everywhere — even from a chat room.
+  backHandlerRef.current = () => {
+    if (showEmojiRef.current) {
+      setShowEmoji(false);
+      return;
+    }
+    if (showSettingsRef.current) {
+      setShowSettings(false);
+      return;
+    }
+    if (showGroupCreateRef.current) {
+      setShowGroupCreate(false);
+      setGroupName("");
+      setGroupPicked([]);
+      return;
+    }
+    if (activeRoomRef.current) {
+      exitRoom();
+      return;
+    }
+    if (showFriendsRef.current) {
+      setShowFriends(false);
+      setSearchQuery("");
+      setSearchResults([]);
+      return;
+    }
+    void App.exitApp().catch(() => {});
+  };
 
   async function openDM(friendId: string) {
     const me = myIdRef.current;
@@ -2012,23 +2077,28 @@ export default function Home() {
                     onClick={() => enterRoom(r)}
                     className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
                   >
-                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
-                      {rIsGroup ? (
-                        <Users className="h-6 w-6" />
-                      ) : rPhoto ? (
-                        <img
-                          src={rPhoto}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-lg font-bold">
-                          {rTitle.charAt(0).toUpperCase()}
-                        </span>
-                      )}
+                    <div className="relative h-12 w-12 shrink-0">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {rIsGroup ? (
+                          <Users className="h-6 w-6" />
+                        ) : rPhoto ? (
+                          <img
+                            src={rPhoto}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-lg font-bold">
+                            {rTitle.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      {/* Presence dot: sibling of the clipped avatar,
+                          not a child — inside overflow-hidden it gets
+                          cut off. */}
                       {!rIsGroup && rOtherId && (
                         <span
-                          className={`absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white ${
+                          className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-white ${
                             isOnline(presence[rOtherId])
                               ? "bg-green-500"
                               : "bg-gray-400"
@@ -2268,20 +2338,25 @@ export default function Home() {
                     onClick={() => void openDM(u.id)}
                     className="flex items-center gap-3 rounded-2xl bg-card px-3 py-3 text-left shadow-sm transition active:scale-[0.99]"
                   >
-                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
-                      {avatar ? (
-                        <img
-                          src={avatar}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-base font-bold">
-                          {u.name.charAt(0).toUpperCase()}
-                        </span>
-                      )}
+                    <div className="relative h-11 w-11 shrink-0">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-ocean text-white">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-base font-bold">
+                            {u.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      {/* Presence dot: sibling of the clipped avatar,
+                          not a child — inside overflow-hidden it gets
+                          cut off. */}
                       <span
-                        className={`absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white ${
+                        className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-white ${
                           isOnline(presence[u.id])
                             ? "bg-green-500"
                             : "bg-gray-400"
@@ -2343,20 +2418,24 @@ export default function Home() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ocean text-xl text-white">
-          {isGroup ? (
-            <Users className="h-5 w-5" />
-          ) : otherPhoto ? (
-            <img
-              src={otherPhoto}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <span className="text-lg font-bold">
-              {roomTitle.charAt(0).toUpperCase()}
-            </span>
-          )}
+        <div className="relative h-11 w-11 shrink-0">
+          <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-ocean text-xl text-white">
+            {isGroup ? (
+              <Users className="h-5 w-5" />
+            ) : otherPhoto ? (
+              <img
+                src={otherPhoto}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-lg font-bold">
+                {roomTitle.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          {/* Presence dot: a sibling of the clipped avatar, not a
+              child — inside overflow-hidden it gets cut in half. */}
           {!isGroup && otherId && (
             <span
               className={`absolute -right-0.5 -bottom-0.5 h-3.5 w-3.5 rounded-full border-2 border-white ${
